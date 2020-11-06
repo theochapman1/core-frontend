@@ -39,13 +39,13 @@ const CopiedIcon = styled(Icon)`
     color: #0324FF;
 `
 
-const HoverCopy = ({ value, children }: Props) => {
+const HoverCopy = ({ value, children, ...props }: Props) => {
     const { copy, isCopied } = useCopy()
     const copyText = I18n.t('general.copyToClipboard')
     const copiedText = I18n.t('general.copied')
 
     return (
-        <Container>
+        <Container {...props}>
             {children}
             <Tooltip value={isCopied ? copiedText : copyText}>
                 {!isCopied && (

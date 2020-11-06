@@ -225,6 +225,66 @@ stories.add('default (iPhone)', () => (
     },
 })
 
+const longDataStream = {
+    id: 'test-stream-1',
+    description: 'Short description',
+    requireEncryptedData: false,
+    requireSignedData: false,
+    partitions: 0,
+    config: {},
+}
+const streamLongData = {
+    metadata: {
+        messageId: {
+            timestamp: (new Date('2020-08-19T13:36:00')).getTime(),
+        },
+    },
+    data: {
+        info: {
+            title: 'Streamr API',
+            version: '1.0.0',
+        },
+        host: 'streamr.network',
+        schemes: [
+            'https',
+        ],
+        basePath: '/api/v1',
+        produces: [
+            'application/json',
+        ],
+        security: {
+            token: {
+                type: 'apiKey',
+                name: 'Authorization',
+                in: 'header',
+            },
+        },
+        tags: [
+            {
+                name: 'categories',
+                description: 'Product categories',
+            },
+            {
+                name: 'canvases',
+                description: 'Start, stop, and manage Canvases',
+            },
+        ],
+    },
+}
+
+const LongDataPreview = () => (
+    <StreamPreview
+        streamId={longDataStream.id}
+        stream={longDataStream}
+        streamData={[streamLongData]}
+        onClose={action('onClose')}
+    />
+)
+
+stories.add('long', () => (
+    <LongDataPreview />
+))
+
 const ErrorView = () => (
     <StreamPreview
         streamId={streamList[0].id}

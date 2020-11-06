@@ -12,6 +12,7 @@ import LoadingIndicator from '$shared/components/LoadingIndicator'
 import Skeleton from '$shared/components/Skeleton'
 import useCopy from '$shared/hooks/useCopy'
 import { formatDateTime } from '$mp/utils/time'
+import HoverCopy from '$shared/components/HoverCopy'
 
 import {
     SecurityIcon,
@@ -364,15 +365,8 @@ const InspectorHeader = styled(HeaderItem)`
 `
 
 const TableItem = styled.div`
-    line-height: 56px;
+    padding: 12px 0;
     font-size: 14px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-`
-
-const SecurityTableItem = styled(TableItem)`
-    overflow: initial;
 `
 
 const TableRow = styled.div`
@@ -391,7 +385,10 @@ const DataTable = styled.div`
     }
 
     ${TableItem} {
-        padding: 0 24px;
+        padding: 12px 24px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
     }
 
     ${TableRow} {
@@ -427,15 +424,21 @@ const DataTable = styled.div`
     }
 `
 
+const InspectorDataLabel = styled.span`
+    color: #A3A3A3;
+    text-transform: uppercase;
+`
+
 const InspectorTable = styled.div`
     @media (min-width: ${SM}px) {
         margin: 0 32px 0 40px;
     }
 
     ${TableRow} {
-        ${TableItem}:first-child {
-            color: #A3A3A3;
-            text-transform: uppercase;
+        ${TableItem}:last-child {
+            white-space: nowrap;
+            overflow: hidden;
+            text-owerflow: ellipses;
         }
 
         @media (max-width: ${LG}px) {
@@ -606,13 +609,40 @@ const ErrorNotice = styled.div`
 const formatValue = (data) => {
     if (typeof data === 'object') {
         return stringifyObject(data, {
-            inlineCharacterLimit: Infinity,
+            indent: '  ',
+            singleQuotes: false,
         })
     }
     return data.toString()
 }
 
 const tz = moment.tz.guess()
+
+const InspectorRow = ({ label, value, children }) => {
+    const [expanded, setExpanded] = useState(false)
+
+    const onClick = useCallback(() => {
+        setExpanded((wasExpanded) => !wasExpanded)
+    }, [])
+
+    return (
+        <TableRow onClick={onClick}>
+            <TableItem>
+                <HoverCopy value={value} onClick={(e) => e.stopPropagation()}>
+                    <InspectorDataLabel>{label}</InspectorDataLabel>
+                </HoverCopy>
+            </TableItem>
+            <TableItem css={!!expanded && css`
+                && {
+                    white-space: pre !important;
+                }
+            `}
+            >
+                {children || null}
+            </TableItem>
+        </TableRow>
+    )
+}
 
 const StreamPreview = ({
     streamId,
@@ -772,38 +802,37 @@ const StreamPreview = ({
             <Inspector inspectorFocused={inspectorFocused}>
                 {!!streamLoaded && (
                     <InspectorTable>
-                        <TableRow>
-                            <TableItem>
-                                <Translate value="streamLivePreview.security" />
-                            </TableItem>
-                            <SecurityTableItem>
-                                <Tooltip value={getSecurityLevelTitle(stream)}>
-                                    <StyledSecurityIcon
-                                        level={getSecurityLevel(stream)}
-                                        mode="small"
-                                    />
-                                </Tooltip>
-                            </SecurityTableItem>
-                        </TableRow>
+                        <InspectorRow
+                            value={getSecurityLevelTitle(stream)}
+                            label={I18n.t('streamLivePreview.security')}
+                        >
+                            <Tooltip value={getSecurityLevelTitle(stream)} placement={Tooltip.BOTTOM}>
+                                <StyledSecurityIcon
+                                    level={getSecurityLevel(stream)}
+                                    mode="small"
+                                />
+                            </Tooltip>
+                        </InspectorRow>
                         {!!activeTimestamp && (
-                            <TableRow>
-                                <TableItem>
-                                    <Translate value="streamLivePreview.timestamp" />
-                                </TableItem>
-                                <TableItem>{formatDateTime(activeTimestamp, tz)}</TableItem>
-                            </TableRow>
+                            <InspectorRow
+                                value={formatDateTime(activeTimestamp, tz)}
+                                label={I18n.t('streamLivePreview.timestamp')}
+                            >
+                                {formatDateTime(activeTimestamp, tz)}
+                            </InspectorRow>
                         )}
                         {selectedDataPoint && selectedDataPoint.data &&
                         typeof selectedDataPoint.data === 'object' &&
                         Object.entries(selectedDataPoint.data).map(([k, v]) => {
                             const value = formatValue(v)
                             return (
-                                <TableRow key={`${k}${value}`}>
-                                    <TableItem>{k}</TableItem>
-                                    <TableItem>
-                                        {value}
-                                    </TableItem>
-                                </TableRow>
+                                <InspectorRow
+                                    key={`${k}${value}`}
+                                    value={value}
+                                    label={k}
+                                >
+                                    {value}
+                                </InspectorRow>
                             )
                         })}
                     </InspectorTable>
