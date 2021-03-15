@@ -2,49 +2,57 @@
 
 import React from 'react'
 import cx from 'classnames'
-import { Button } from 'reactstrap'
-import { Translate, I18n } from 'react-redux-i18n'
 
-import Link from '$shared/components/Link'
+import Button from '$shared/components/Button'
 import { isPaidProduct } from '$mp/utils/product'
-import type { Product } from '$mp/flowtype/product-types'
+import type { Product, Subscription } from '$mp/flowtype/product-types'
 import PaymentRate from '$mp/components/PaymentRate'
+import ExpirationCounter from '$mp/components/ExpirationCounter'
 import { timeUnits, productStates } from '$shared/utils/constants'
 
-import styles from './productDetails.pcss'
+import SocialIcons from './SocialIcons'
+import styles from './productDetails2.pcss'
 
 type Props = {
     product: Product,
     isValidSubscription: boolean,
-    onPurchase: () => void,
-    setTruncateState: () => void,
-    truncateState: boolean,
-    truncationRequired: boolean,
-    productDetailsRef: Object,
+    productSubscription?: Subscription,
+    onPurchase: () => void | Promise<void>,
+    isPurchasing?: boolean,
+    isWhitelisted?: ?boolean,
 }
 
-const buttonTitle = (product: Product, isValidSubscription: boolean) => {
+const buttonTitle = (product: Product, isValidSubscription: boolean, isWhitelisted: ?boolean) => {
     if (isPaidProduct(product)) {
+        if (product.requiresWhitelist && isWhitelisted === false) {
+            return 'Request Access'
+        }
+
         return isValidSubscription ?
-            I18n.t('productPage.productDetails.renew') :
-            I18n.t('productPage.productDetails.purchase')
+            'Renew' :
+            'Subscribe'
     }
 
     return isValidSubscription ?
-        I18n.t('productPage.productDetails.saved') :
-        I18n.t('productPage.productDetails.add')
+        'Saved to my subscriptions' :
+        'Subscribe'
 }
+
+const TWO_DAYS = 2 * 24 * 60 * 60 * 1000
+
+const shouldShowCounter = (endTimestamp: number) => (
+    (Date.now() - (endTimestamp * 1000)) < TWO_DAYS
+)
 
 const ProductDetails = ({
     product,
     isValidSubscription,
+    productSubscription,
     onPurchase,
-    truncateState,
-    setTruncateState,
-    truncationRequired,
-    productDetailsRef,
+    isPurchasing,
+    isWhitelisted,
 }: Props) => (
-    <div className={styles.root} ref={productDetailsRef}>
+    <div className={styles.root}>
         <div
             className={cx(styles.basics, {
                 [styles.active]: !!isValidSubscription,
@@ -54,54 +62,75 @@ const ProductDetails = ({
                 {product.name}
             </h2>
             <div className={styles.offer}>
-                <span className={styles.productOwner}>by {product.owner}</span>
-                <span className={styles.separator} />
                 <div className={styles.paymentRate}>
-                    {product.isFree ? I18n.t('productPage.productDetails.free') : (
-                        <PaymentRate
-                            amount={product.pricePerSecond}
-                            currency={product.priceCurrency}
-                            timeUnit={timeUnits.hour}
-                        />
+                    {product.isFree ? 'Free' : (
+                        <React.Fragment>
+                            <span className={styles.priceHeading}>Price</span>
+                            &nbsp;
+                            <PaymentRate
+                                className={styles.price}
+                                amount={product.pricePerSecond}
+                                currency={product.priceCurrency}
+                                timeUnit={timeUnits.hour}
+                            />
+                        </React.Fragment>
                     )}
                 </div>
-                <div className={styles.activeTag}>
-                    <span>Active</span>
-                </div>
+                {productSubscription != null && !!productSubscription.endTimestamp && shouldShowCounter(productSubscription.endTimestamp) && (
+                    <ExpirationCounter expiresAt={new Date(productSubscription.endTimestamp * 1000)} />
+                )}
             </div>
         </div>
-        <div className={styles.buttonWrapper}>
-            <Button
-                className={styles.button}
-                color="primary"
-                disabled={(!isPaidProduct(product) && isValidSubscription) || product.state !== productStates.DEPLOYED}
-                onClick={onPurchase}
-            >
-                {buttonTitle(product, isValidSubscription)}
-            </Button>
-        </div>
-        <div className={styles.description}>
-            <div
-                className={cx(styles.inner, {
-                    [styles.truncated]: !!truncateState,
-                })}
-            >
-                {product.description}
-            </div>
-            {!!truncationRequired && (
-                <Link
-                    decorated
-                    href="#"
-                    className={styles.toggleMore}
-                    onClick={setTruncateState}
+        <div className={cx(styles.separator, styles.titleSeparator)} />
+        <div className={styles.purchaseWrapper}>
+            <div className={styles.buttonWrapper}>
+                <Button
+                    className={styles.button}
+                    kind="primary"
+                    size="big"
+                    disabled={
+                        isPurchasing ||
+                        isWhitelisted === null ||
+                        (!isPaidProduct(product) && isValidSubscription) ||
+                        product.state !== productStates.DEPLOYED
+                    }
+                    onClick={onPurchase}
+                    waiting={isPurchasing}
                 >
-                    {truncateState ? (
-                        <Translate value="productPage.description.more" />
-                    ) : (
-                        <Translate value="productPage.description.less" />
-                    )}
-                </Link>
-            )}
+                    {buttonTitle(product, isValidSubscription, isWhitelisted)}
+                </Button>
+                {product.contact && (
+                    <SocialIcons className={styles.socialIcons} contactDetails={product.contact} />
+                )}
+            </div>
+            <div className={cx(styles.separator, styles.purchaseSeparator)} />
+            <div className={styles.details}>
+                <div>
+                    <span className={styles.subheading}>Sold by</span>
+                    &nbsp;
+                    {product.owner}
+                </div>
+                {product.contact && product.contact.url && (
+                    <div>
+                        <span className={styles.subheading}>Website</span>
+                        &nbsp;
+                        <a href={product.contact.url} rel="noopener noreferrer" target="_blank">{product.contact.url}</a>
+                    </div>
+                )}
+                {product.contact && product.contact.email && (
+                    <div>
+                        <a href={`mailto:${product.contact.email}`}>Contact seller</a>
+                    </div>
+                )}
+                {/* Hide these until we have a place to read them from */}
+                {false && (
+                    <React.Fragment>
+                        <div>
+                            <a href="#TODO">View other products</a>
+                        </div>
+                    </React.Fragment>
+                )}
+            </div>
         </div>
     </div>
 )

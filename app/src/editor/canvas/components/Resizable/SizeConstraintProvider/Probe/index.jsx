@@ -1,6 +1,6 @@
 // @flow
 
-import React, { useRef, useEffect, useContext } from 'react'
+import React, { useRef, useEffect, useContext, type ComponentType } from 'react'
 import cx from 'classnames'
 import { type Ref } from '$shared/flowtype/common-types'
 import { Context as SizeConstaintContext } from '..'
@@ -27,16 +27,21 @@ const Probe = ({ group, uid: uidProp, width, height }: Props) => {
             return
         }
 
-        const { width: w, height: h } = current.getBoundingClientRect()
+        // use client{Width,Height} which ignore css transformation
+        // which we want so it reports original px values rather than camera-scaled px values
+        const { clientWidth: w, clientHeight: h } = current
 
-        setDimensions({
-            ...(width != null ? {
-                width: [group, uid, width !== 'auto' ? width : w],
-            } : {}),
-            ...(height != null ? {
-                height: [group, uid, height !== 'auto' ? height : h],
-            } : {}),
-        })
+        const dim = {}
+
+        if (width != null) {
+            dim.width = [group, uid, width !== 'auto' ? width : w]
+        }
+
+        if (height != null) {
+            dim.height = [group, uid, height !== 'auto' ? height : h]
+        }
+
+        setDimensions(dim)
     }, [
         group,
         height,
@@ -57,5 +62,4 @@ const Probe = ({ group, uid: uidProp, width, height }: Props) => {
     )
 }
 
-// $FlowFixMe – again, memo's annotation issue
-export default React.memo(Probe)
+export default (React.memo(Probe): ComponentType<Props>)

@@ -486,13 +486,12 @@ describe('Variadic Port Handling', () => {
             // change passthrough.in1/out1 type to number by connecting constantNumber.out to passthrough.in1
             expect(State.canConnectPorts(canvas, constantNumber.outputs[0].id, passThrough.inputs[0].id)).toBeTruthy()
             canvas = State.updateCanvas(State.connectPorts(canvas, constantNumber.outputs[0].id, passThrough.inputs[0].id))
+            // test server accepts state
+            canvas = State.updateCanvas(await Services.create(canvas))
             expect(State.arePortsConnected(canvas, constantNumber.outputs[0].id, passThrough.inputs[0].id)).toBeTruthy()
             // verify previous (incompatible) connections were dropped
             expect(State.arePortsConnected(canvas, constantText1.outputs[0].id, passThrough.inputs[0].id)).not.toBeTruthy()
             expect(State.arePortsConnected(canvas, passThrough.outputs[0].id, constantText2.params[0].id)).not.toBeTruthy()
-
-            // test server accepts state
-            expect(State.updateCanvas(await Services.create(canvas))).toMatchCanvas(canvas)
         })
 
         it('can connect linked output when input exported', async () => {
@@ -514,22 +513,21 @@ describe('Variadic Port Handling', () => {
 
             // connect passthrough out to label in
             canvas = State.updateCanvas(State.connectPorts(canvas, passthrough.outputs[0].id, label.inputs[0].id))
+            canvas = State.updateCanvas(await Services.create(canvas))
 
             // linked output is connected even though exported input is not connected
             expect(State.arePortsConnected(canvas, passthrough.outputs[0].id, label.inputs[0].id)).toBeTruthy()
-
             // de-export input
             canvas = State.updateCanvas(State.setPortOptions(canvas, passthrough.inputs[0].id, {
                 export: false,
             }))
 
+            // test server accepts state
+            canvas = State.updateCanvas(await Services.saveNow(canvas))
             // can no longer connect
             expect(State.canConnectPorts(canvas, passthrough.outputs[0].id, label.inputs[0].id)).not.toBeTruthy()
             // connection was automatically removed
             expect(State.arePortsConnected(canvas, passthrough.outputs[0].id, label.inputs[0].id)).not.toBeTruthy()
-
-            // test server accepts state
-            expect(State.updateCanvas(await Services.create(canvas))).toMatchCanvas(canvas)
         })
 
         it('handles nested connection changes', async () => {
@@ -570,6 +568,8 @@ describe('Variadic Port Handling', () => {
 
             // change passthrough1.in1/out1 type to number by connecting constantNumber.out to passthrough1.in1
             canvas = State.updateCanvas(State.connectPorts(canvas, constantNumber.outputs[0].id, passThrough1.inputs[0].id))
+            // test server accepts state
+            canvas = State.updateCanvas(await Services.create(canvas))
 
             // check valid connections maintained
             expect(State.arePortsConnected(canvas, constantNumber.outputs[0].id, passThrough1.inputs[0].id)).toBeTruthy()
@@ -577,9 +577,214 @@ describe('Variadic Port Handling', () => {
             expect(State.arePortsConnected(canvas, passThrough2.outputs[0].id, passThrough1.inputs[1].id)).toBeTruthy()
             // verify previous (incompatible) connections were dropped
             expect(State.arePortsConnected(canvas, constantNumber.outputs[0].id, constantText2.params[0].id)).not.toBeTruthy()
+        })
+
+        it('permits renaming outputs', async () => {
+            let canvas = State.emptyCanvas()
+            canvas = State.addModule(canvas, await loadModuleDefinition('ConstantText'))
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            let [
+                constantText1,
+                passThrough1,
+            ] = canvas.modules
+
+            // connect constantText1.out to passThrough.in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, constantText1.outputs[0].id, passThrough1.inputs[0].id))
+
+            // update variables
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+            ] = canvas.modules
+
+            // adopts input displayName
+            expect(passThrough1.outputs[0].displayName).toBe(passThrough1.inputs[0].displayName)
+
+            // perform rename
+            const newName = 'custom name'
+            canvas = State.updateCanvas(State.setPortOptions(canvas, passThrough1.outputs[0].id, {
+                displayName: newName,
+            }))
+
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+            ] = canvas.modules
+
+            expect(passThrough1.outputs[0].displayName).toBe(newName)
 
             // test server accepts state
-            expect(State.updateCanvas(await Services.create(canvas))).toMatchCanvas(canvas)
+            const serverCanvas = State.updateCanvas(await Services.create(canvas))
+            expect(serverCanvas).toMatchCanvas(canvas)
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+            ] = serverCanvas.modules
+            expect(passThrough1.outputs[0].displayName).toBe(newName)
+
+            // test displayName handling after reconnecting
+
+            canvas = State.updateCanvas(State.connectPorts(canvas, constantText1.outputs[0].id, passThrough1.inputs[0].id))
+
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+            ] = canvas.modules
+
+            // wipes custom name on new connection (not ideal, but no current way to know which names were custom, and which were autogenerated)
+            expect(passThrough1.outputs[0].displayName).toBe(passThrough1.inputs[0].displayName)
+        })
+
+        it('permits renaming outputs if input is exported', async () => {
+            let canvas = State.emptyCanvas()
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            let [
+                passThrough1,
+            ] = canvas.modules
+
+            canvas = State.updateCanvas(State.setPortOptions(canvas, passThrough1.inputs[0].id, {
+                export: true,
+            }))
+
+            // perform rename
+            const newName = 'custom name'
+            canvas = State.updateCanvas(State.setPortOptions(canvas, passThrough1.outputs[0].id, {
+                displayName: newName,
+            }))
+
+            ;[ // eslint-disable-line semi-style
+                passThrough1,
+            ] = canvas.modules
+
+            expect(passThrough1.outputs[0].displayName).toBe(newName)
+
+            // test server accepts state
+            const serverCanvas = State.updateCanvas(await Services.create(canvas))
+            expect(serverCanvas).toMatchCanvas(canvas)
+            ;[ // eslint-disable-line semi-style
+                passThrough1,
+            ] = serverCanvas.modules
+            expect(passThrough1.outputs[0].displayName).toBe(newName)
+        })
+
+        it('supports loops', async () => {
+            let canvas = State.emptyCanvas()
+            canvas = State.addModule(canvas, await loadModuleDefinition('ConstantText'))
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            const [
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+            // constant out1 -> passthrough1 in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, constantText1.outputs[0].id, passThrough1.inputs[0].id))
+            // passthrough1 out1 -> passthrough2 in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, passThrough1.outputs[0].id, passThrough2.inputs[0].id))
+            // passthrough2 out1 -> passthrough1 in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, passThrough2.outputs[0].id, passThrough1.inputs[0].id))
+        })
+
+        it('propagates disconnections', async () => {
+            let canvas = State.emptyCanvas()
+            canvas = State.addModule(canvas, await loadModuleDefinition('ConstantText'))
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            let [
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+
+            // constant out1 -> passthrough1 in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, constantText1.outputs[0].id, passThrough1.inputs[0].id))
+            // passthrough1 out1 -> passthrough2 in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, passThrough1.outputs[0].id, passThrough2.inputs[0].id))
+
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+
+            // passthrough2 out1 -> passthrough1 in2
+            canvas = State.updateCanvas(State.connectPorts(canvas, passThrough2.outputs[0].id, passThrough1.inputs[1].id))
+
+            // disconnect input should remove chained outputs
+            canvas = State.updateCanvas(State.disconnectPorts(canvas, constantText1.outputs[0].id, passThrough1.inputs[0].id))
+
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+
+            // all superfluous ports removed
+            expect(passThrough1.outputs.length).toBe(1)
+            expect(passThrough1.inputs.length).toBe(1)
+            expect(passThrough2.outputs.length).toBe(1)
+            expect(passThrough2.inputs.length).toBe(1)
+
+            // nothing connected
+            expect(passThrough1.outputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
+            expect(passThrough1.inputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
+            expect(passThrough2.outputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
+            expect(passThrough2.inputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
+        })
+
+        it('propagates disconnections through multiple levels', async () => {
+            let canvas = State.emptyCanvas()
+            canvas = State.addModule(canvas, await loadModuleDefinition('ConstantText'))
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            canvas = State.addModule(canvas, await loadModuleDefinition('PassThrough'))
+            let [
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+
+            // constant out1 -> passthrough1 in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, constantText1.outputs[0].id, passThrough1.inputs[0].id))
+
+            // passthrough1 out1 -> passthrough2 in1
+            canvas = State.updateCanvas(State.connectPorts(canvas, passThrough1.outputs[0].id, passThrough2.inputs[0].id))
+
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+
+            // passthrough2 out1 -> passthrough1 in2
+            canvas = State.updateCanvas(State.connectPorts(canvas, passThrough2.outputs[0].id, passThrough1.inputs[1].id))
+
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+            // passthrough1 out2 -> passthrough2 in2
+            canvas = State.updateCanvas(State.connectPorts(canvas, passThrough1.outputs[1].id, passThrough2.inputs[1].id))
+
+            // disconnect input should remove chained outputs
+            canvas = State.updateCanvas(State.disconnectPorts(canvas, constantText1.outputs[0].id, passThrough1.inputs[0].id))
+
+            ;[ // eslint-disable-line semi-style
+                constantText1,
+                passThrough1,
+                passThrough2,
+            ] = canvas.modules
+
+            // all superfluous ports removed
+            expect(passThrough1.outputs.length).toBe(1)
+            expect(passThrough1.inputs.length).toBe(1)
+            expect(passThrough2.outputs.length).toBe(1)
+            expect(passThrough2.inputs.length).toBe(1)
+            // nothing connected
+            expect(passThrough1.outputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
+            expect(passThrough1.inputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
+            expect(passThrough2.outputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
+            expect(passThrough2.inputs.every((p) => !State.isPortConnected(canvas, p.id))).toBeTruthy()
         })
     })
 })

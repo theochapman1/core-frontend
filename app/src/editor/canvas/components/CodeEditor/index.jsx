@@ -1,8 +1,9 @@
 import React, { useState, useCallback } from 'react'
+import { useLayoutState } from '$editor/canvas/components/DraggableCanvasWindow'
 
+import { useCameraContext } from '../Camera'
 import CodeEditorWindow from './CodeEditorWindow'
 import DebugWindow from './DebugWindow'
-import { useLayoutState } from '$editor/canvas/components/DraggableCanvasWindow'
 
 export const CodeEditor = ({
     children,
@@ -15,18 +16,45 @@ export const CodeEditor = ({
 }) => {
     const [editorOpen, setEditorOpen] = useState(false)
     const [debugOpen, setDebugOpen] = useState(false)
-    const [editorLayout, setEditorSize, setEditorPosition] = useLayoutState()
-    const [debugLayout, setDebugSize, setDebugPosition] = useLayoutState()
+    const camera = useCameraContext()
+    const editorLayout = useLayoutState()
+    const debugLayout = useLayoutState()
+
+    const initEditorPosition = useCallback(() => {
+        const { scale } = camera
+        const center = camera.getCenterWorldPoint()
+        const { setPosition } = editorLayout
+        setPosition([
+            center.x - ((editorLayout.size[0] / 2) * scale),
+            center.y - ((editorLayout.size[1] / 2) * scale),
+        ])
+    }, [editorLayout, camera])
+
+    // set debug default position to editor window + offset
+    const initDebugPosition = useCallback(() => {
+        const { scale } = camera
+        const { setPosition } = debugLayout
+        const offset = 16 / scale
+        setPosition([
+            editorLayout.position[0] + offset,
+            editorLayout.position[1] + offset,
+        ])
+    }, [debugLayout, camera, editorLayout])
 
     const onShowEditor = useCallback(() => {
-        setEditorOpen(true)
-    }, [setEditorOpen])
+        initEditorPosition()
+        setEditorOpen((v) => !v) // show === toggle
+    }, [setEditorOpen, initEditorPosition])
+
     const onCloseEditor = useCallback(() => {
         setEditorOpen(false)
     }, [setEditorOpen])
+
     const onShowDebug = useCallback(() => {
-        setDebugOpen(true)
-    }, [setDebugOpen])
+        initDebugPosition()
+        setDebugOpen((v) => !v) // show === toggle
+    }, [setDebugOpen, initDebugPosition])
+
     const onCloseDebug = useCallback(() => {
         setDebugOpen(false)
     }, [setDebugOpen])
@@ -36,27 +64,31 @@ export const CodeEditor = ({
             {children && (typeof children === 'function') && children(onShowEditor)}
             {!!editorOpen && (
                 <CodeEditorWindow
-                    position={editorLayout}
-                    onPositionUpdate={setEditorPosition}
-                    size={editorLayout}
-                    onSizeUpdate={setEditorSize}
                     code={code}
                     readOnly={readOnly}
                     onClose={onCloseEditor}
                     onApply={onApply}
                     onChange={onChange}
                     onShowDebug={onShowDebug}
+                    x={editorLayout.position[0]}
+                    y={editorLayout.position[1]}
+                    width={editorLayout.size[0]}
+                    height={editorLayout.size[1]}
+                    onChangePosition={editorLayout.setPosition}
+                    onChangeSize={editorLayout.setSize}
                 />
             )}
             {!!debugOpen && (
                 <DebugWindow
-                    onPositionUpdate={setDebugPosition}
-                    position={debugLayout}
-                    onSizeUpdate={setDebugSize}
-                    size={debugLayout}
                     messages={debugMessages}
                     onClear={onClearDebug}
                     onClose={onCloseDebug}
+                    x={debugLayout.position[0]}
+                    y={debugLayout.position[1]}
+                    width={debugLayout.size[0]}
+                    height={debugLayout.size[1]}
+                    onChangePosition={debugLayout.setPosition}
+                    onChangeSize={debugLayout.setSize}
                 />
             )}
         </React.Fragment>
@@ -64,3 +96,5 @@ export const CodeEditor = ({
 }
 
 export default CodeEditor
+
+export const CodeEditorContainer = () => <div id="canvas-windows" />

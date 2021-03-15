@@ -1,20 +1,24 @@
-// @flow
-
 import React from 'react'
-import { Translate } from 'react-redux-i18n'
-import cx from 'classnames'
+import styled from 'styled-components'
 
-import styles from './errorView.pcss'
-
-type Props = {
-    className?: string,
-    style?: any,
-}
-
-const ErrorComponentView = ({ className, ...props }: Props) => (
-    <div className={cx(className, styles.errorView)} {...props}>
-        <Translate value="error.general" />
+const UnstyledErrorComponentView = (props) => (
+    <div {...props}>
+        Oops. Something has broken down here.
     </div>
 )
+
+const ErrorComponentView = styled(UnstyledErrorComponentView)`
+    align-items: center;
+    align-self: center;
+    color: #323232;
+    display: flex;
+    flex: 1;
+    font-size: 1em;
+    justify-content: center;
+    line-height: 1.5em;
+    max-width: 800px;
+    padding: 30px;
+    text-align: center;
+`
 
 export default ErrorComponentView

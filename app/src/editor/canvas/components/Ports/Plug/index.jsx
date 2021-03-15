@@ -5,28 +5,23 @@ import cx from 'classnames'
 import { type Ref } from '$shared/flowtype/common-types'
 import { DropTarget, DragSource } from '../../PortDragger'
 import { DragDropContext } from '../../DragDropContext'
-import {
-    arePortsOfSameModule,
-    canConnectPorts,
-    hasPort,
-} from '../../../state'
+import useModule from '../../ModuleRenderer/useModule'
+import { canConnectPorts, hasPort } from '../../../state'
 
 import styles from './plug.pcss'
 
 type Props = {
-    api: any,
     onValueChange: any,
-    canvas: any,
     className?: ?string,
     port: any,
+    disabled?: boolean,
     register?: ?(any, ?HTMLDivElement) => void,
 }
 
 const Plug = ({
-    api,
-    canvas,
     className,
     port,
+    disabled,
     register,
     onValueChange,
     ...props
@@ -45,22 +40,24 @@ const Plug = ({
         }
     }, [ref, register, port.id])
 
+    const { canvas } = useModule()
+
     const { isDragging, data } = useContext(DragDropContext)
     const { sourceId, portId } = data || {}
     const fromId = sourceId || portId || null
     const dragInProgress = !!isDragging && portId != null
-    const sourcePortId = dragInProgress ? fromId : null
-    const draggingFromSameModule = dragInProgress && hasPort(canvas, sourcePortId) && arePortsOfSameModule(canvas, sourcePortId, port.id)
+    const draggingFromSamePort = dragInProgress && hasPort(canvas, fromId) && port.id === fromId
     const canDrop = dragInProgress && canConnectPorts(canvas, fromId, port.id)
 
     return (
         <div
             {...props}
             className={cx(styles.root, className, {
-                [styles.allowDrop]: !draggingFromSameModule && canDrop,
+                [styles.allowDrop]: !draggingFromSamePort && canDrop,
                 [styles.idle]: !dragInProgress,
-                [styles.ignoreDrop]: draggingFromSameModule,
-                [styles.rejectDrop]: dragInProgress && !draggingFromSameModule && !canDrop,
+                [styles.ignoreDrop]: draggingFromSamePort,
+                [styles.rejectDrop]: dragInProgress && !draggingFromSamePort && !canDrop,
+                [styles.disabled]: disabled,
             })}
         >
             <div
@@ -77,12 +74,13 @@ const Plug = ({
             <DropTarget
                 className={cx(styles.dragger, styles.dropTarget)}
                 port={port}
+                disabled={disabled}
             />
             <DragSource
-                api={api}
                 onValueChange={onValueChange}
                 className={cx(styles.dragger, styles.dragSource)}
                 port={port}
+                disabled={disabled}
             />
         </div>
     )

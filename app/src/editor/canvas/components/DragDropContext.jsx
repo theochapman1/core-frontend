@@ -1,6 +1,7 @@
 /* eslint-disable react/no-unused-state */
 import React from 'react'
 import Draggable from 'react-draggable'
+import { useCameraScale } from './Camera'
 
 const DragDropContext = React.createContext({})
 
@@ -11,8 +12,8 @@ export class DragDropProvider extends React.PureComponent {
 
     initialState = {
         isDragging: false,
-        isCancelled: undefined,
-        diff: undefined,
+        isCancelled: false,
+        diff: null,
         data: {},
     }
 
@@ -26,7 +27,12 @@ export class DragDropProvider extends React.PureComponent {
     }
 
     onKeyDown = (event) => {
-        if (this.state.isDragging && event.key === 'Escape') {
+        if (!this.state.isDragging) { return }
+        // all keyboard events should be swallowed while dragging
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        if (event.key === 'Escape') {
             this.onCancel()
         }
     }
@@ -40,9 +46,7 @@ export class DragDropProvider extends React.PureComponent {
         })
     }
 
-    getDiff = () => (
-        this.diff
-    )
+    getDiff = () => this.diff
 
     onMove = (fn) => {
         this.moveListeners.add(fn)
@@ -128,7 +132,7 @@ class EditorDraggable extends React.PureComponent {
     }
 
     getDiff(data) {
-        const { initialPosition } = this.state
+        const initialPosition = this.initialPosition || this.state.initialPosition
 
         return {
             x: data.x - initialPosition.x,
@@ -150,17 +154,8 @@ class EditorDraggable extends React.PureComponent {
 
     onStart = (event, data) => {
         if (this.unmounted) { return }
-        this.setState({
-            initialPosition: data,
-        })
-
-        if (!this.props.onStart) {
-            return this.context.onStart()
-        }
-
-        // pass on props.onStart to context
-        const startData = this.props.onStart(event, data)
-        return this.context.onStart(startData)
+        this.initialPosition = data
+        event.stopPropagation()
     }
 
     onStop = (event, data) => {
@@ -170,6 +165,7 @@ class EditorDraggable extends React.PureComponent {
         }
 
         if (this.context.isCancelled) {
+            this.context.onStop()
             this.setState({
                 initialPosition: undefined,
             })
@@ -183,7 +179,10 @@ class EditorDraggable extends React.PureComponent {
             }, this.reset)
         }
 
-        if (this.unmounted) { return }
+        if (this.unmounted) {
+            this.context.onStop()
+            return
+        }
 
         this.setState({
             // ensure this happens after props.onStop
@@ -196,12 +195,37 @@ class EditorDraggable extends React.PureComponent {
 
     onDrag = (event, data) => {
         if (this.unmounted) { return false }
+        event.stopPropagation()
         // do nothing if cancelled
         if (this.context.isCancelled) {
             return false
         }
 
         const diff = this.getDiff(data)
+        // only trigger start after moving
+        if (!this.context.isDragging) {
+            if (diff.x === 0 && diff.y === 0) {
+                return
+            }
+            this.setState({
+                initialPosition: this.initialPosition,
+            }, () => {
+                this.initialPosition = undefined
+            })
+            if (!this.props.onStart) {
+                const shouldContinue = this.context.onStart()
+                if (shouldContinue === false) {
+                    return false
+                }
+            }
+
+            // pass on props.onStart to context
+            const startData = this.props.onStart(event, data)
+            const shouldContinue = this.context.onStart(startData)
+            if (shouldContinue === false) {
+                return false
+            }
+        }
 
         if (!this.props.onDrag) {
             return this.context.onDrag(diff)
@@ -209,7 +233,7 @@ class EditorDraggable extends React.PureComponent {
 
         const shouldContinue = this.props.onDrag(event, data, diff)
 
-        if (!shouldContinue) {
+        if (!shouldContinue === false) {
             return false
         }
 
@@ -261,4 +285,14 @@ class EditorDraggable extends React.PureComponent {
     }
 }
 
-export { EditorDraggable as Draggable }
+function EditorDraggableWithScale(props) {
+    const scale = useCameraScale()
+    return (
+        <EditorDraggable
+            {...props}
+            scale={scale}
+        />
+    )
+}
+
+export { EditorDraggableWithScale as Draggable }

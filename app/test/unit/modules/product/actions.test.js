@@ -1,7 +1,6 @@
 import assert from 'assert-diff'
 import sinon from 'sinon'
 import { normalize } from 'normalizr'
-import { CALL_HISTORY_METHOD } from 'react-router-redux'
 
 import mockStore from '$testUtils/mockStoreProvider'
 import * as actions from '$mp/modules/product/actions'
@@ -11,34 +10,12 @@ import * as entityConstants from '$shared/modules/entities/constants'
 import { productSchema, streamsSchema } from '$shared/modules/entities/schema'
 import { initialState } from '$mp/modules/product/reducer'
 
-jest.mock('$shared/utils/url', () => (
-    {
-        formatApiUrl: () => 'TEST_formatApiUrl_result',
-        formatExternalUrl: () => 'TEST_formatExternalUrl_result',
-        formatPath: () => 'TEST_formatPath_result',
-    }
-))
 jest.mock('$mp/modules/myPurchaseList/actions', () => (
     {
         getMyPurchases: () => (dispatch) => (
             new Promise((resolve) => {
                 dispatch({
                     type: 'TEST_GET_MY_PURCHASES',
-                })
-                resolve()
-            })
-        ),
-    }
-))
-jest.mock('$mp/modules/purchase/actions', () => (
-    {
-        addFreeProduct: (id) => (dispatch) => (
-            new Promise((resolve) => {
-                dispatch({
-                    type: 'TEST_ADD_FREE_PRODUCT',
-                    payload: {
-                        id,
-                    },
                 })
                 resolve()
             })
@@ -293,194 +270,6 @@ describe('product - actions', () => {
                         id: productId,
                         error: {
                             message: error.message,
-                        },
-                    },
-                },
-            ]
-            assert.deepStrictEqual(store.getActions(), expectedActions)
-        })
-    })
-
-    describe('purchaseProduct', () => {
-        it('purchases a paid product', async () => {
-            const productId = '1337'
-            const store = mockStore({
-                product: {
-                    id: productId,
-                },
-                entities: {
-                    products: {
-                        [productId]: {
-                            id: productId,
-                            name: 'Test product',
-                            pricePerSecond: 123,
-                            isFree: false,
-                        },
-                    },
-                },
-            })
-            await store.dispatch(actions.purchaseProduct())
-
-            const expectedActions = [
-                {
-                    type: CALL_HISTORY_METHOD,
-                    payload: {
-                        method: 'replace',
-                        args: [
-                            'TEST_formatPath_result',
-                        ],
-                    },
-                },
-            ]
-            assert.deepStrictEqual(store.getActions(), expectedActions)
-        })
-
-        it('adds a free product to my products', async () => {
-            const productId = '1337'
-            const store = mockStore({
-                product: {
-                    id: productId,
-                },
-                entities: {
-                    products: {
-                        [productId]: {
-                            id: productId,
-                            name: 'Test product',
-                            pricePerSecond: 0,
-                            isFree: true,
-                        },
-                    },
-                },
-            })
-            await store.dispatch(actions.purchaseProduct())
-
-            const expectedActions = [
-                {
-                    type: 'TEST_ADD_FREE_PRODUCT',
-                    payload: {
-                        id: productId,
-                    },
-                },
-            ]
-            assert.deepStrictEqual(store.getActions(), expectedActions)
-        })
-
-        it('skips if no product is selected', async () => {
-            const store = mockStore({
-                product: {
-                    id: null,
-                },
-            })
-            await store.dispatch(actions.purchaseProduct())
-
-            const expectedActions = []
-            assert.deepStrictEqual(store.getActions(), expectedActions)
-        })
-    })
-
-    describe('getUserProductPermissions', () => {
-        it('calls services.getUserProductPermissions and sets permissions', async () => {
-            const productId = 1
-            const data = [
-                {
-                    id: 1,
-                    user: 'tester1@streamr.com',
-                    operation: 'read',
-                },
-                {
-                    id: 2,
-                    user: 'tester1@streamr.com',
-                    operation: 'write',
-                },
-                {
-                    id: 3,
-                    anonymous: true,
-                },
-                {
-                    id: 4,
-                    user: 'tester1@streamr.com',
-                },
-            ]
-
-            const serviceStub = sandbox.stub(services, 'getUserProductPermissions').callsFake(() => Promise.resolve(data))
-
-            const store = mockStore()
-            await store.dispatch(actions.getUserProductPermissions(productId))
-            assert(serviceStub.calledOnce)
-
-            const expectedActions = [
-                {
-                    type: constants.GET_USER_PRODUCT_PERMISSIONS_REQUEST,
-                    payload: {
-                        id: productId,
-                    },
-                },
-                {
-                    type: constants.GET_USER_PRODUCT_PERMISSIONS_SUCCESS,
-                    payload: {
-                        read: true,
-                        write: true,
-                        share: false,
-                    },
-                },
-            ]
-            assert.deepStrictEqual(store.getActions(), expectedActions)
-        })
-
-        it('handles anonymous permission as read', async () => {
-            const productId = 1
-            const data = [{
-                id: 3,
-                anonymous: true,
-            }]
-
-            const serviceStub = sandbox.stub(services, 'getUserProductPermissions').callsFake(() => Promise.resolve(data))
-
-            const store = mockStore()
-            await store.dispatch(actions.getUserProductPermissions(productId))
-            assert(serviceStub.calledOnce)
-
-            const expectedActions = [
-                {
-                    type: constants.GET_USER_PRODUCT_PERMISSIONS_REQUEST,
-                    payload: {
-                        id: productId,
-                    },
-                },
-                {
-                    type: constants.GET_USER_PRODUCT_PERMISSIONS_SUCCESS,
-                    payload: {
-                        read: true,
-                        write: false,
-                        share: false,
-                    },
-                },
-            ]
-            assert.deepStrictEqual(store.getActions(), expectedActions)
-        })
-
-        it('calls services.getUserProductPermissions and handles error', async () => {
-            const productId = 1
-            const errorMessage = 'error'
-            const serviceStub = sandbox.stub(services, 'getUserProductPermissions').callsFake(() => Promise.reject(new Error(errorMessage)))
-
-            const store = mockStore()
-            await store.dispatch(actions.getUserProductPermissions(productId))
-            assert(serviceStub.calledOnce)
-
-            const expectedActions = [
-                {
-                    type: constants.GET_USER_PRODUCT_PERMISSIONS_REQUEST,
-                    payload: {
-                        id: productId,
-                    },
-                },
-                {
-                    type: constants.GET_USER_PRODUCT_PERMISSIONS_FAILURE,
-                    payload: {
-                        id: productId,
-                        error: {
-                            message: errorMessage,
                         },
                     },
                 },

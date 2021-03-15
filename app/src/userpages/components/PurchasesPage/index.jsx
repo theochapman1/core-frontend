@@ -1,187 +1,150 @@
 // @flow
 
-import React, { Component } from 'react'
-import { connect } from 'react-redux'
-import { Container, Row, Col } from 'reactstrap'
-import { Translate, I18n } from 'react-redux-i18n'
-import cx from 'classnames'
-import Helmet from 'react-helmet'
+import React, { useMemo, useEffect } from 'react'
+import { useSelector, useDispatch } from 'react-redux'
 
-import Layout from '../Layout'
-import links from '../../../links'
-import { defaultColumns, getFilters } from '../../utils/constants'
+import { CoreHelmet } from '$shared/components/Helmet'
 import { getMyPurchases, updateFilter, applyFilter } from '$mp/modules/myPurchaseList/actions'
-import { selectMyPurchaseList, selectSubscriptions, selectFilter, selectFetchingMyPurchaseList } from '$mp/modules/myPurchaseList/selectors'
-import Tile from '$shared/components/Tile'
-import { isActive } from '$mp/utils/time'
-import Search from '../Header/Search'
-import Dropdown from '$shared/components/Dropdown'
-import NoPurchasesView from './NoPurchases'
+import { selectMyPurchaseList, selectSubscriptions, selectFetchingMyPurchaseList } from '$mp/modules/myPurchaseList/selectors'
+import Popover from '$shared/components/Popover'
 import DocsShortcuts from '$userpages/components/DocsShortcuts'
-
-import type { ProductList, ProductSubscription } from '$mp/flowtype/product-types'
-import type { Filter, SortOption } from '$userpages/flowtype/common-types'
+import ListContainer from '$shared/components/Container/List'
+import { isDataUnionProduct } from '$mp/utils/product'
+import useFilterSort from '$userpages/hooks/useFilterSort'
+import useAllDataUnionStats from '$mp/modules/dataUnion/hooks/useAllDataUnionStats'
+import { PurchaseTile } from '$shared/components/Tile'
+import Grid from '$shared/components/Tile/Grid'
+import Search from '../Header/Search'
+import { getFilters } from '../../utils/constants'
+import Layout from '../Layout'
+import NoPurchasesView from './NoPurchases'
 
 import styles from './purchases.pcss'
 
-export type StateProps = {
-    purchases: ProductList,
-    subscriptions: Array<ProductSubscription>,
-    filter: ?Filter,
-    fetching: boolean,
-}
+const PurchasesPage = () => {
+    const sortOptions = useMemo(() => {
+        const filters = getFilters('product')
+        return [
+            filters.RECENT_DESC,
+            filters.NAME_ASC,
+            filters.NAME_DESC,
+            filters.ACTIVE,
+            filters.EXPIRED,
+        ]
+    }, [])
 
-export type DispatchProps = {
-    getMyPurchases: () => Promise<void>,
-    updateFilter: (Filter) => void,
-    applyFilter: () => void,
-}
+    const {
+        defaultFilter,
+        filter,
+        setSearch,
+        setSort,
+        resetFilter,
+    } = useFilterSort(sortOptions)
 
-type Props = StateProps & DispatchProps
+    const purchases = useSelector(selectMyPurchaseList)
 
-const isSubscriptionActive = (subscription?: ProductSubscription): boolean => isActive((subscription && subscription.endsAt) || '')
+    const subscriptions = useSelector(selectSubscriptions)
 
-const getSortOptions = (): Array<SortOption> => {
-    const filters = getFilters()
-    return [
-        filters.NAME_ASC,
-        filters.NAME_DESC,
-        filters.ACTIVE,
-        filters.EXPIRED,
-    ]
-}
+    const fetching = useSelector(selectFetchingMyPurchaseList)
 
-class PurchasesPage extends Component<Props> {
-    defaultFilter = getSortOptions()[0].filter
+    const dispatch = useDispatch()
 
-    componentDidMount() {
-        const { filter, getMyPurchases, updateFilter, applyFilter } = this.props
+    const {
+        load: loadDataUnionStats,
+        members,
+        loadedIds,
+        fetchingIds,
+        reset: resetStats,
+    } = useAllDataUnionStats()
 
-        // Set default filter if not selected
-        if (!filter) {
-            updateFilter(this.defaultFilter)
-        }
+    useEffect(() => {
+        dispatch(updateFilter(filter))
+        dispatch(getMyPurchases())
+            .then(() => {
+                const productIds = dispatch(applyFilter())
 
-        getMyPurchases().then(() => {
-            applyFilter()
-        })
-    }
+                loadDataUnionStats(productIds)
+            })
+    }, [dispatch, filter, loadDataUnionStats])
 
-    onSearchChange = (value: string) => {
-        const { filter, updateFilter } = this.props
-        const newFilter = {
-            ...filter,
-            search: value,
-        }
-        updateFilter(newFilter)
-    }
+    const subEndAts = useMemo(() => (
+        subscriptions.reduce((memo, sub) => ({
+            ...memo,
+            [sub.product.id]: new Date(sub.endsAt),
+        }), {})
+    ), [subscriptions])
 
-    onSortChange = (sortOptionId) => {
-        const { filter, updateFilter } = this.props
-        const sortOption = getSortOptions().find((opt) => opt.filter.id === sortOptionId)
+    useEffect(() => () => {
+        resetStats()
+    }, [resetStats])
 
-        if (sortOption) {
-            const newFilter = {
-                search: filter && filter.search,
-                ...sortOption.filter,
+    return (
+        <Layout
+            headerSearchComponent={
+                <Search.Active
+                    placeholder="Filter subscriptions"
+                    value={(filter && filter.search) || ''}
+                    onChange={setSearch}
+                    debounceTime={0}
+                />
             }
-            updateFilter(newFilter)
-        }
-    }
-
-    resetFilter = () => {
-        const { updateFilter } = this.props
-        updateFilter({
-            ...this.defaultFilter,
-            search: '',
-        })
-    }
-
-    render() {
-        const { purchases, subscriptions, filter, fetching } = this.props
-
-        return (
-            <Layout
-                headerSearchComponent={
-                    <Search
-                        placeholder={I18n.t('userpages.purchases.filterPurchases')}
-                        value={(filter && filter.search) || ''}
-                        onChange={this.onSearchChange}
-                        debounceTime={0}
+            headerFilterComponent={
+                <Popover
+                    title="Sort by"
+                    onChange={setSort}
+                    selectedItem={(filter && filter.id) || (defaultFilter && defaultFilter.id)}
+                    type="uppercase"
+                    caret="svg"
+                    activeTitle
+                    menuProps={{
+                        right: true,
+                    }}
+                >
+                    {sortOptions.map((s) => (
+                        <Popover.Item key={s.filter.id} value={s.filter.id}>
+                            {s.displayName}
+                        </Popover.Item>
+                    ))}
+                </Popover>
+            }
+            loading={fetching}
+        >
+            <CoreHelmet title="Subscriptions" />
+            <ListContainer className={styles.corepageContentContainer} >
+                {!fetching && purchases && !purchases.length && (
+                    <NoPurchasesView
+                        hasFilter={!!filter && (!!filter.search || !!filter.key)}
+                        filter={filter}
+                        onResetFilter={resetFilter}
                     />
-                }
-                headerFilterComponent={
-                    <Dropdown
-                        title={I18n.t('userpages.filter.sortBy')}
-                        onChange={this.onSortChange}
-                        selectedItem={(filter && filter.id) || this.defaultFilter.id}
-                    >
-                        {getSortOptions().map((s) => (
-                            <Dropdown.Item key={s.filter.id} value={s.filter.id}>
-                                {s.displayName}
-                            </Dropdown.Item>
-                        ))}
-                    </Dropdown>
-                }
-                loading={fetching}
-            >
-                <Helmet title={`Streamr Core | ${I18n.t('userpages.title.purchases')}`} />
-                <Container className={styles.corepageContentContainer} >
-                    {!fetching && purchases && !purchases.length && (
-                        <NoPurchasesView
-                            hasFilter={!!filter && (!!filter.search || !!filter.key)}
-                            filter={filter}
-                            onResetFilter={this.resetFilter}
-                        />
-                    )}
-                    <Row>
+                )}
+                {purchases.length > 0 && (
+                    <Grid>
                         {purchases.map((product) => {
-                            const isActive = subscriptions && isSubscriptionActive(subscriptions.find((s) => s.product.id === product.id))
+                            const isDataUnion = isDataUnionProduct(product)
+                            const beneficiaryAddress = (product.beneficiaryAddress || '').toLowerCase()
+                            const readyToFetch = loadedIds.includes(beneficiaryAddress)
+                            const isFetching = fetchingIds.includes(beneficiaryAddress)
+                            const memberCount = (isDataUnion && !isFetching) ? members[beneficiaryAddress] : undefined
+                            const isDeploying = isDataUnion && readyToFetch && !isFetching && typeof memberCount === 'undefined'
 
                             return (
-                                <Col {...defaultColumns} key={product.id}>
-                                    <Tile
-                                        imageUrl={product.imageUrl}
-                                        link={product.id && `${links.marketplace.products}/${product.id}`}
-                                    >
-                                        <Tile.Title>{product.name}</Tile.Title>
-                                        <Tile.Description>{product.owner}</Tile.Description>
-                                        <Tile.Status
-                                            className={
-                                                cx({
-                                                    [styles.active]: isActive,
-                                                    [styles.expired]: !isActive,
-                                                })}
-                                        >
-                                            {
-                                                isActive ?
-                                                    <Translate value="userpages.purchases.active" /> :
-                                                    <Translate value="userpages.purchases.expired" />
-                                            }
-                                        </Tile.Status>
-                                    </Tile>
-                                </Col>
+                                <PurchaseTile
+                                    expiresAt={subEndAts[product.id]}
+                                    key={product.id}
+                                    numMembers={memberCount}
+                                    product={product}
+                                    showDataUnionBadge={isDataUnion}
+                                    showDeployingBadge={isDeploying}
+                                />
                             )
                         })}
-                    </Row>
-                </Container>
-                <DocsShortcuts />
-            </Layout>
-        )
-    }
+                    </Grid>
+                )}
+            </ListContainer>
+            <DocsShortcuts />
+        </Layout>
+    )
 }
 
-export const mapStateToProps = (state: any): StateProps => ({
-    purchases: selectMyPurchaseList(state),
-    subscriptions: selectSubscriptions(state),
-    filter: selectFilter(state),
-    fetching: selectFetchingMyPurchaseList(state),
-})
-
-export const mapDispatchToProps = (dispatch: Function): DispatchProps => ({
-    getMyPurchases: () => dispatch(getMyPurchases()),
-    updateFilter: (filter: Filter) => dispatch(updateFilter(filter)),
-    applyFilter: () => dispatch(applyFilter()),
-})
-
-export default connect(mapStateToProps, mapDispatchToProps)(PurchasesPage)
+export default PurchasesPage

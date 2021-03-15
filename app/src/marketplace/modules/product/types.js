@@ -1,8 +1,8 @@
 // @flow
 
 import type { ErrorFromApi, PayloadAction } from '$shared/flowtype/common-types'
-import type { ProductId, Subscription } from '../../flowtype/product-types'
 import type { StreamIdList } from '$shared/flowtype/stream-types'
+import type { ProductId, Subscription } from '../../flowtype/product-types'
 
 export type ProductIdAction = PayloadAction<{
     id: ProductId,
@@ -26,9 +26,3 @@ export type ProductSubscriptionAction = PayloadAction<{
     subscription: Subscription,
 }>
 export type ProductSubscriptionActionCreator = (id: ProductId, subscription: Subscription) => ProductSubscriptionAction
-
-export type UserProductPermissionsIdAction = PayloadAction<{
-    read: boolean,
-    write: boolean,
-    share: boolean,
-}>

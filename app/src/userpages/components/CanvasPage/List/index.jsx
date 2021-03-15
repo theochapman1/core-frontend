@@ -1,298 +1,316 @@
 // @flow
 
-import React, { Component, Fragment } from 'react'
-import { connect } from 'react-redux'
-import { Container, Row, Col, Button } from 'reactstrap'
-import { capital } from 'case'
-import Link from '$shared/components/Link'
-import { push } from 'react-router-redux'
-import copy from 'copy-to-clipboard'
-import { Translate, I18n } from 'react-redux-i18n'
-import { Helmet } from 'react-helmet'
-import moment from 'moment'
-import cx from 'classnames'
+import React, { Fragment, useEffect, useMemo, useCallback, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { Link as RouterLink } from 'react-router-dom'
+import { push } from 'connected-react-router'
+import styled from 'styled-components'
 
-import type { Filter, SortOption } from '$userpages/flowtype/common-types'
-import type { Canvas } from '$userpages/flowtype/canvas-types'
+import type { Canvas, CanvasId } from '$userpages/flowtype/canvas-types'
 
+import { CoreHelmet } from '$shared/components/Helmet'
 import Layout from '$userpages/components/Layout'
-import links from '$app/src/links'
-import { getCanvases, deleteCanvas, updateFilter } from '$userpages/modules/canvas/actions'
-import { selectCanvases, selectFilter, selectFetching } from '$userpages/modules/canvas/selectors'
-import { defaultColumns, getFilters } from '$userpages/utils/constants'
-import Tile from '$shared/components/Tile'
-import DropdownActions from '$shared/components/DropdownActions'
-import { formatExternalUrl } from '$shared/utils/url'
-import Search from '../../Header/Search'
-import Dropdown from '$shared/components/Dropdown'
-import ShareDialog from '$userpages/components/ShareDialog'
+import { getCanvases, deleteOrRemoveCanvas } from '$userpages/modules/canvas/actions'
+import { selectCanvases, selectFetching } from '$userpages/modules/canvas/selectors'
+import { getFilters } from '$userpages/utils/constants'
+import Popover from '$shared/components/Popover'
 import confirmDialog from '$shared/utils/confirm'
-import type { User } from '$shared/flowtype/user-types'
-import { selectUserData } from '$shared/modules/user/selectors'
-import NoCanvasesView from './NoCanvases'
-import { RunStates } from '$editor/canvas/state'
 import DocsShortcuts from '$userpages/components/DocsShortcuts'
-import CanvasPreview from '$editor/canvas/components/Preview'
+import { getResourcePermissions, resetResourcePermission } from '$userpages/modules/permission/actions'
+import { selectFetchingPermissions, selectCanvasPermissions } from '$userpages/modules/permission/selectors'
 import Notification from '$shared/utils/Notification'
 import { NotificationIcon } from '$shared/utils/constants'
+import ListContainer from '$shared/components/Container/List'
+import Button from '$shared/components/Button'
+import useFilterSort from '$userpages/hooks/useFilterSort'
+import useCopy from '$shared/hooks/useCopy'
+import { CanvasTile } from '$shared/components/Tile'
+import Grid from '$shared/components/Tile/Grid'
+import Sidebar from '$shared/components/Sidebar'
+import SidebarProvider, { useSidebar } from '$shared/components/Sidebar/SidebarProvider'
+import ShareSidebar from '$userpages/components/ShareSidebar'
+import resourceUrl from '$shared/utils/resourceUrl'
+import { MD, LG } from '$shared/utils/styled'
+import routes from '$routes'
+import Search from '../../Header/Search'
+import NoCanvasesView from './NoCanvases'
 
-import styles from './canvasList.pcss'
+const DesktopOnlyButton = styled(Button)`
+     && {
+         display: none;
+     }
 
-export type StateProps = {
-    user: ?User,
-    canvases: Array<Canvas>,
-    filter: ?Filter,
-    fetching: boolean,
-}
+     @media (min-width: ${LG}px) {
+         && {
+             display: inline-flex;
+         }
+     }
+`
 
-export type DispatchProps = {
-    getCanvases: () => void,
-    deleteCanvas: (id: string) => void,
-    updateFilter: (filter: Filter) => void,
-    navigate: (to: string) => void,
-    copyToClipboard: (text: string) => void,
-}
+const StyledListContainer = styled(ListContainer)`
+    && {
+        margin-top: 16px;
+    }
 
-type Props = StateProps & DispatchProps
+    @media (min-width: ${MD}px) {
+        && {
+            margin-top: 34px;
+        }
+    }
 
-type State = {
-    shareDialogCanvas: ?Canvas,
+    @media (min-width: ${LG}px) {
+        && {
+            margin-top: 0;
+        }
+    }
+`
+
+function CanvasPageSidebar({ canvas }) {
+    const sidebar = useSidebar()
+    const dispatch = useDispatch()
+
+    const canvasId = canvas && canvas.id
+
+    const onClose = useCallback(() => {
+        sidebar.close()
+
+        if (canvasId) {
+            dispatch(resetResourcePermission('CANVAS', canvasId))
+        }
+    }, [sidebar, dispatch, canvasId])
+
+    return (
+        <Sidebar.WithErrorBoundary
+            isOpen={sidebar.isOpen()}
+            onClose={onClose}
+        >
+            {sidebar.isOpen('share') && (
+                <ShareSidebar
+                    resourceTitle={canvas && canvas.name}
+                    resourceType="CANVAS"
+                    resourceId={canvas && canvas.id}
+                    onClose={onClose}
+                />
+            )}
+        </Sidebar.WithErrorBoundary>
+    )
 }
 
 const CreateCanvasButton = () => (
-    <Button
-        color="primary"
-        className={styles.createCanvasButton}
-        tag={Link}
-        to={links.editor.canvasEditor}
+    <DesktopOnlyButton
+        tag={RouterLink}
+        to={routes.canvases.edit({
+            id: null,
+        })}
     >
-        <Translate value="userpages.canvases.createCanvas" />
-    </Button>
+        Create canvas
+    </DesktopOnlyButton>
 )
 
-const getSortOptions = (): Array<SortOption> => {
-    const filters = getFilters()
-    return [
-        filters.RECENT,
-        filters.RUNNING,
-        filters.STOPPED,
-        filters.NAME_ASC,
-        filters.NAME_DESC,
-    ]
-}
+const CanvasList = () => {
+    const sortOptions = useMemo(() => {
+        const filters = getFilters('canvas')
+        return [
+            filters.RECENT_DESC,
+            filters.RUNNING,
+            filters.STOPPED,
+            filters.NAME_ASC,
+            filters.NAME_DESC,
+        ]
+    }, [])
+    const {
+        defaultFilter,
+        filter,
+        setSearch,
+        setSort,
+        resetFilter,
+    } = useFilterSort(sortOptions)
 
-class CanvasList extends Component<Props, State> {
-    defaultFilter = getSortOptions()[0].filter
+    const dispatch = useDispatch()
+    const { copy } = useCopy()
+    const canvases = useSelector(selectCanvases)
+    const fetching = useSelector(selectFetching)
+    const fetchingPermissions = useSelector(selectFetchingPermissions)
+    const permissions = useSelector(selectCanvasPermissions)
 
-    state = {
-        shareDialogCanvas: undefined,
-    }
+    const sidebar = useSidebar()
 
-    componentDidMount() {
-        const { filter, updateFilter, getCanvases } = this.props
+    useEffect(() => {
+        dispatch(getCanvases(filter))
+    }, [dispatch, filter])
 
-        // Set default filter if not selected
-        if (!filter) {
-            updateFilter(this.defaultFilter)
+    const deleteCanvasAndNotify = useCallback(async (id: CanvasId, hasDeletePermission: boolean) => {
+        try {
+            await dispatch(deleteOrRemoveCanvas(id))
+
+            Notification.push({
+                title: `Canvas ${hasDeletePermission ? 'deleted' : 'removed'} successfully`,
+                icon: NotificationIcon.CHECKMARK,
+            })
+        } catch (e) {
+            Notification.push({
+                title: e.message,
+                icon: NotificationIcon.ERROR,
+            })
         }
-        getCanvases()
-    }
+    }, [dispatch])
 
-    confirmDeleteCanvas = async (canvas: Canvas) => {
+    const confirmDeleteOrRemoveCanvas = useCallback(async (id: CanvasId, hasDeletePermission: boolean) => {
         const confirmed = await confirmDialog('canvas', {
-            title: I18n.t('userpages.canvases.delete.confirmTitle'),
-            message: I18n.t('userpages.canvases.delete.confirmMessage'),
+            title: `${hasDeletePermission ? 'Delete' : 'Remove'} this canvas?`,
+            message: 'This is an unrecoverable action. Please confirm this is what you want before you proceed.',
             acceptButton: {
-                title: I18n.t('userpages.canvases.delete.confirmButton'),
-                color: 'danger',
+                title: `Yes, ${hasDeletePermission ? 'delete' : 'remove'}`,
+                kind: 'destructive',
             },
             centerButtons: true,
             dontShowAgain: false,
         })
 
         if (confirmed) {
-            this.props.deleteCanvas(canvas.id)
+            deleteCanvasAndNotify(id, hasDeletePermission)
         }
-    }
+    }, [deleteCanvasAndNotify])
 
-    onOpenShareDialog = (canvas: Canvas) => {
-        this.setState({
-            shareDialogCanvas: canvas,
-        })
-    }
+    const [shareDialogCanvas, setShareDialogCanvas] = useState(undefined)
+    const onOpenShareDialog = useCallback((canvas: Canvas) => {
+        setShareDialogCanvas(canvas)
+        sidebar.open('share')
+    }, [sidebar])
 
-    onCloseShareDialog = () => {
-        this.setState({
-            shareDialogCanvas: null,
-        })
-    }
-
-    onCopyUrl = (url: string) => {
-        this.props.copyToClipboard(url)
+    const onCopyUrl = useCallback((id: CanvasId) => {
+        copy(resourceUrl('CANVAS', id))
 
         Notification.push({
-            title: I18n.t('userpages.canvases.menu.copyUrlNotification'),
+            title: 'Canvas URL copied',
             icon: NotificationIcon.CHECKMARK,
         })
-    }
+    }, [copy])
 
-    getActions = (canvas) => {
-        const { navigate } = this.props
+    const onToggleCanvasDropdown = useCallback((id: string) => async (open: boolean) => {
+        if (open && !fetchingPermissions && !permissions[id]) {
+            try {
+                await dispatch(getResourcePermissions('CANVAS', id))
+            } catch (e) {
+                // Noop.
+            }
+        }
+    }, [dispatch, fetchingPermissions, permissions])
 
-        const editUrl = formatExternalUrl(
-            process.env.PLATFORM_ORIGIN_URL,
-            `${links.editor.canvasEditor}/${canvas.id}`,
-        )
+    const canBeSharedByCurrentUser = useCallback((id: string): boolean => (
+        !fetchingPermissions &&
+        permissions[id] &&
+        permissions[id].includes('canvas_share')
+    ), [fetchingPermissions, permissions])
+
+    const canBeDeletedByCurrentUser = useCallback((id: string): boolean => (
+        !fetchingPermissions &&
+        permissions[id] &&
+        permissions[id].includes('canvas_delete')
+    ), [fetchingPermissions, permissions])
+
+    const navigate = useCallback((to) => dispatch(push(to)), [dispatch])
+
+    const getActions = useCallback((canvas) => {
+        const hasDeletePermission = canBeDeletedByCurrentUser(canvas.id)
 
         return (
             <Fragment>
-                <DropdownActions.Item onClick={() => navigate(`${links.editor.canvasEditor}/${canvas.id}`)}>
-                    <Translate value="userpages.canvases.menu.edit" />
-                </DropdownActions.Item>
-                <DropdownActions.Item
-                    onClick={() => this.onOpenShareDialog(canvas)}
+                <Popover.Item
+                    onClick={() => navigate(routes.canvases.edit({
+                        id: canvas.id,
+                    }))}
                 >
-                    <Translate value="userpages.canvases.menu.share" />
-                </DropdownActions.Item>
-                <DropdownActions.Item onClick={() => this.onCopyUrl(editUrl)}>
-                    <Translate value="userpages.canvases.menu.copyUrl" />
-                </DropdownActions.Item>
-                <DropdownActions.Item
-                    onClick={() => this.confirmDeleteCanvas(canvas)}
+                    Edit
+                </Popover.Item>
+                <Popover.Item
+                    disabled={!canBeSharedByCurrentUser(canvas.id)}
+                    onClick={() => onOpenShareDialog(canvas)}
                 >
-                    <Translate value="userpages.canvases.menu.delete" />
-                </DropdownActions.Item>
+                    Share
+                </Popover.Item>
+                <Popover.Item
+                    onClick={() => onCopyUrl(canvas.id)}
+                >
+                    Copy URL
+                </Popover.Item>
+                <Popover.Item
+                    onClick={() => confirmDeleteOrRemoveCanvas(canvas.id, hasDeletePermission)}
+                >
+                    {hasDeletePermission ? 'Delete' : 'Remove'}
+                </Popover.Item>
             </Fragment>
         )
-    }
+    }, [
+        navigate,
+        canBeSharedByCurrentUser,
+        canBeDeletedByCurrentUser,
+        onOpenShareDialog,
+        onCopyUrl,
+        confirmDeleteOrRemoveCanvas,
+    ])
 
-    onSearchChange = (value: string) => {
-        const { filter, updateFilter, getCanvases } = this.props
-        const newFilter = {
-            ...filter,
-            search: value,
-        }
-        updateFilter(newFilter)
-        getCanvases()
-    }
-
-    onSortChange = (sortOptionId) => {
-        const { filter, updateFilter, getCanvases } = this.props
-        const sortOption = getSortOptions().find((opt) => opt.filter.id === sortOptionId)
-
-        if (sortOption) {
-            const newFilter = {
-                search: filter && filter.search,
-                ...sortOption.filter,
+    return (
+        <Layout
+            headerAdditionalComponent={<CreateCanvasButton />}
+            headerSearchComponent={
+                <Search.Active
+                    placeholder="Filter canvases"
+                    value={(filter && filter.search) || ''}
+                    onChange={setSearch}
+                />
             }
-            updateFilter(newFilter)
-            getCanvases()
-        }
-    }
-
-    resetFilter = () => {
-        const { updateFilter, getCanvases } = this.props
-        updateFilter({
-            ...this.defaultFilter,
-            search: '',
-        })
-        getCanvases()
-    }
-
-    generateTimeAgoDescription = (canvasUpdatedDate: Date) => moment(canvasUpdatedDate).fromNow()
-
-    render() {
-        const { canvases, filter, fetching } = this.props
-        const { shareDialogCanvas } = this.state
-
-        return (
-            <Layout
-                headerAdditionalComponent={<CreateCanvasButton />}
-                headerSearchComponent={
-                    <Search
-                        placeholder={I18n.t('userpages.canvases.filterCanvases')}
-                        value={(filter && filter.search) || ''}
-                        onChange={this.onSearchChange}
-                    />
-                }
-                headerFilterComponent={
-                    <Dropdown
-                        title={I18n.t('userpages.filter.sortBy')}
-                        onChange={this.onSortChange}
-                        selectedItem={(filter && filter.id) || this.defaultFilter.id}
-                    >
-                        {getSortOptions().map((s) => (
-                            <Dropdown.Item key={s.filter.id} value={s.filter.id}>
-                                {s.displayName}
-                            </Dropdown.Item>
-                        ))}
-                    </Dropdown>
-                }
-                loading={fetching}
-            >
-                {!!shareDialogCanvas && (
-                    <ShareDialog
-                        resourceTitle={shareDialogCanvas.name}
-                        resourceType="CANVAS"
-                        resourceId={shareDialogCanvas.id}
-                        onClose={this.onCloseShareDialog}
+            headerFilterComponent={
+                <Popover
+                    title="Sort by"
+                    type="uppercase"
+                    caret="svg"
+                    activeTitle
+                    menuProps={{
+                        right: true,
+                    }}
+                    onChange={setSort}
+                    selectedItem={(filter && filter.id) || (defaultFilter && defaultFilter.id)}
+                >
+                    {sortOptions.map((s) => (
+                        <Popover.Item key={s.filter.id} value={s.filter.id}>
+                            {s.displayName}
+                        </Popover.Item>
+                    ))}
+                </Popover>
+            }
+            loading={fetching}
+        >
+            <StyledListContainer>
+                <CoreHelmet title="Canvases" />
+                {!fetching && canvases && !canvases.length && (
+                    <NoCanvasesView
+                        hasFilter={!!filter && (!!filter.search || !!filter.key)}
+                        filter={filter}
+                        onResetFilter={resetFilter}
                     />
                 )}
-                <Container className={styles.corepageContentContainer}>
-                    <Helmet title={`Streamr Core | ${I18n.t('userpages.canvases.title')}`} />
-                    {!fetching && canvases && !canvases.length && (
-                        <NoCanvasesView
-                            hasFilter={!!filter && (!!filter.search || !!filter.key)}
-                            filter={filter}
-                            onResetFilter={this.resetFilter}
-                        />
-                    )}
-                    <Row>
+                {canvases.length > 0 && (
+                    <Grid>
                         {canvases.map((canvas) => (
-                            <Col {...defaultColumns} key={canvas.id}>
-                                <Tile
-                                    link={`${links.editor.canvasEditor}/${canvas.id}`}
-                                    dropdownActions={this.getActions(canvas)}
-                                    image={<CanvasPreview className={styles.PreviewImage} canvas={canvas} />}
-                                >
-                                    <Tile.Title>{canvas.name}</Tile.Title>
-                                    <Tile.Description>
-                                        {canvas.updated === canvas.created ? 'Created ' : 'Updated '}
-                                        {this.generateTimeAgoDescription(new Date(canvas.updated))}
-                                    </Tile.Description>
-                                    <Tile.Status
-                                        className={
-                                            cx({
-                                                [styles.running]: canvas.state === RunStates.Running,
-                                                [styles.stopped]: canvas.state === RunStates.Stopped,
-                                            })}
-                                    >
-                                        {capital(canvas.state)}
-                                    </Tile.Status>
-                                </Tile>
-                            </Col>
+                            <CanvasTile
+                                actions={getActions(canvas)}
+                                canvas={canvas}
+                                key={canvas.id}
+                                onMenuToggle={onToggleCanvasDropdown(canvas.id)}
+                            />
                         ))}
-                    </Row>
-                </Container>
-                <DocsShortcuts />
-            </Layout>
-        )
-    }
+                    </Grid>
+                )}
+            </StyledListContainer>
+            <CanvasPageSidebar canvas={shareDialogCanvas} />
+            <DocsShortcuts />
+        </Layout>
+    )
 }
 
-export const mapStateToProps = (state: any): StateProps => ({
-    user: selectUserData(state),
-    canvases: selectCanvases(state),
-    filter: selectFilter(state),
-    fetching: selectFetching(state),
-})
-
-export const mapDispatchToProps = (dispatch: Function): DispatchProps => ({
-    getCanvases: () => dispatch(getCanvases()),
-    deleteCanvas: (id) => dispatch(deleteCanvas(id)),
-    updateFilter: (filter) => dispatch(updateFilter(filter)),
-    navigate: (to) => dispatch(push(to)),
-    copyToClipboard: (text) => copy(text),
-})
-
-export default connect(mapStateToProps, mapDispatchToProps)(CanvasList)
+export default (props: any) => (
+    <SidebarProvider>
+        <CanvasList {...props} />
+    </SidebarProvider>
+)

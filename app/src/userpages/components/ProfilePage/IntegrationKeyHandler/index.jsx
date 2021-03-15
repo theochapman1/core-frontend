@@ -1,84 +1,104 @@
 // @flow
 
-import React, { Component, Fragment } from 'react'
-import { I18n, Translate } from 'react-redux-i18n'
-import { connect } from 'react-redux'
+import React, { Fragment, useCallback, useEffect } from 'react'
+import { useSelector } from 'react-redux'
 
-import styles from '../profilePage.pcss'
+import usePrivateKeys from '$shared/modules/integrationKey/hooks/usePrivateKeys'
+import useModal from '$shared/hooks/useModal'
+import useIsMounted from '$shared/hooks/useIsMounted'
+import Button from '$shared/components/Button'
+import Notification from '$shared/utils/Notification'
+import { NotificationIcon } from '$shared/utils/constants'
+import { usePending } from '$shared/hooks/usePending'
+import { selectUserData } from '$shared/modules/user/selectors'
+import Description from '../Description'
+import IntegrationKeyList from './IntegrationKeyList'
 
-import type { IntegrationKeyId, IntegrationKeyList } from '$shared/flowtype/integration-key-types'
-import { createIntegrationKey, deleteIntegrationKey, fetchIntegrationKeys, editIntegrationKey } from '$shared/modules/integrationKey/actions'
-import type { StoreState } from '$shared/flowtype/store-state'
-import IntegrationKeyHandlerSegment from './IntegrationKeyHandlerSegment'
-import { selectPrivateKeys, selectIntegrationKeysError } from '$shared/modules/integrationKey/selectors'
-import type { Address } from '$shared/flowtype/web3-types'
-import AddKeyField from '$userpages/components/KeyField/AddKeyField'
+import AddPrivateKeyDialog from './AddPrivateKeyDialog'
 
-type StateProps = {
-    integrationKeys: IntegrationKeyList,
+export const IntegrationKeyHandler = () => {
+    const {
+        load,
+        privateKeys,
+        remove,
+        edit,
+        fetching,
+    } = usePrivateKeys()
+    const { api: addPrivateKeyDialog, isOpen } = useModal('userpages.addPrivateKey')
+    const isMounted = useIsMounted()
+    const { wrap, isPending: isAddPrivateKeyDialogPending } = usePending('user.ADD_PRIVATE_KEY_DIALOG')
+    const { wrap: wrapPrivateKeyAction } = usePending('user.ADD_PRIVATE_KEY')
+    const { isPending: isSavePending } = usePending('user.SAVE')
+    const user = useSelector(selectUserData)
+
+    const wrappedEdit = useCallback(async (...args) => (
+        wrapPrivateKeyAction(async () => {
+            await edit(...args)
+        })
+    ), [wrapPrivateKeyAction, edit])
+
+    const wrappedRemove = useCallback(async (...args) => (
+        wrapPrivateKeyAction(async () => {
+            await remove(...args)
+        })
+    ), [wrapPrivateKeyAction, remove])
+
+    const addPrivateKey = useCallback(async () => (
+        wrap(async () => {
+            const { added, error } = (await addPrivateKeyDialog.open()) || {}
+
+            if (isMounted()) {
+                if (error) {
+                    Notification.push({
+                        title: 'There was an error while adding an Ethereum account',
+                        icon: NotificationIcon.ERROR,
+                        error,
+                    })
+                } else if (added) {
+                    Notification.push({
+                        title: 'Ethereum account added',
+                        icon: NotificationIcon.CHECKMARK,
+                    })
+                }
+            }
+        })
+    ), [wrap, addPrivateKeyDialog, isMounted])
+
+    useEffect(() => {
+        load()
+    }, [load])
+
+    const isDisabled = !!(fetching || isSavePending || isAddPrivateKeyDialogPending)
+
+    return (
+        <Fragment>
+            <Description>
+                These Ethereum accounts can be used on canvases to build data-driven interactions
+                <br />
+                with Ethereum. Even though the private keys are securely stored server-side,
+                <br />
+                <strong>we do not recommend</strong> having significant amounts of value on these accounts.
+            </Description>
+            <IntegrationKeyList
+                integrationKeys={privateKeys}
+                onDelete={wrappedRemove}
+                onEdit={wrappedEdit}
+                disabled={isDisabled}
+                activeKeyId={user && user.username}
+            />
+            <Button
+                type="button"
+                kind="secondary"
+                disabled={isOpen || isDisabled}
+                onClick={addPrivateKey}
+                waiting={isAddPrivateKeyDialogPending}
+            >
+                {!!(privateKeys && privateKeys[0]) && 'Add account'}
+                {!(privateKeys && privateKeys[0]) && 'Add new account'}
+            </Button>
+            <AddPrivateKeyDialog />
+        </Fragment>
+    )
 }
 
-type DispatchProps = {
-    deleteIntegrationKey: (keyId: IntegrationKeyId) => Promise<void>,
-    createIntegrationKey: (name: string, privateKey: Address) => Promise<void>,
-    editIntegrationKey: (keyId: IntegrationKeyId, keyName: string) => Promise<void>,
-    getIntegrationKeys: () => void
-}
-
-type Props = StateProps & DispatchProps
-
-export class IntegrationKeyHandler extends Component<Props> {
-    componentDidMount() {
-        // TODO: Move to (yet non-existent) router
-        this.props.getIntegrationKeys()
-    }
-
-    onNew = (keyName: string, privateKey: string): Promise<void> => this.props.createIntegrationKey(keyName, privateKey)
-
-    onDelete = (keyId: IntegrationKeyId): Promise<void> => this.props.deleteIntegrationKey(keyId)
-
-    onEdit = (keyId: IntegrationKeyId, keyName: string): Promise<void> => this.props.editIntegrationKey(keyId, keyName)
-
-    render() {
-        return (
-            <Fragment>
-                <Translate value="userpages.profilePage.ethereumPrivateKeys.description" tag="p" className={styles.longText} />
-                <IntegrationKeyHandlerSegment
-                    integrationKeys={this.props.integrationKeys}
-                    onNew={this.onNew}
-                    onDelete={this.onDelete}
-                    onEdit={this.onEdit}
-                    hideValues
-                    createWithValue
-                />
-                <AddKeyField
-                    label={this.props.integrationKeys && this.props.integrationKeys[0]
-                        ? I18n.t('userpages.profilePage.ethereumAddress.addNewAddress')
-                        : I18n.t('userpages.profilePage.ethereumAddress.addAddress')
-                    }
-                    onSave={this.onNew}
-                    createWithValue
-                    addKeyFieldAllowed
-                />
-            </Fragment>
-        )
-    }
-}
-
-const EMPTY = []
-
-export const mapStateToProps = (state: StoreState): StateProps => ({
-    integrationKeys: selectPrivateKeys(state) || EMPTY,
-    error: selectIntegrationKeysError(state),
-})
-
-export const mapDispatchToProps = (dispatch: Function): DispatchProps => ({
-    deleteIntegrationKey: (keyId: IntegrationKeyId): Promise<void> => dispatch(deleteIntegrationKey(keyId)),
-    createIntegrationKey: (keyName: string, privateKey: Address): Promise<void> => dispatch(createIntegrationKey(keyName, privateKey)),
-    getIntegrationKeys() {
-        dispatch(fetchIntegrationKeys())
-    },
-    editIntegrationKey: (keyId: IntegrationKeyId, keyName: string) => dispatch(editIntegrationKey(keyId, keyName)),
-})
-
-export default connect(mapStateToProps, mapDispatchToProps)(IntegrationKeyHandler)
+export default IntegrationKeyHandler

@@ -1,7 +1,8 @@
 // @flow
 
-import React, { type Node, type Context, createContext, useMemo, useState, useCallback } from 'react'
+import React, { type Node, type Context, createContext, useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import debounce from 'lodash/debounce'
+import useIsMounted from '$shared/hooks/useIsMounted'
 
 type ContextProps = {
     minHeight: number,
@@ -28,9 +29,11 @@ export { SizeConstraintContext as Context }
 
 type Props = {
     children?: Node,
+    onSizeChange: () => void,
 }
 
-const SizeConstraintProvider = ({ children }: Props) => {
+const SizeConstraintProvider = ({ onSizeChange, children }: Props) => {
+    const isMounted = useIsMounted()
     const [dim, setDim] = useState({
         heights: {},
         widths: {},
@@ -71,17 +74,25 @@ const SizeConstraintProvider = ({ children }: Props) => {
     }, [setDim])
 
     const refreshProbes = useCallback(debounce(() => {
+        if (!isMounted()) { return } // no-op if unmounted
         setProbeRefreshCount((count) => count + 1)
-    }, 200), [])
+    }, 200), [isMounted])
 
     const { minWidth, minHeight } = useMemo(() => ({
-        minHeight: Object.values(dim.heights).reduce((min, group) => (
+        minHeight: Object.values(dim.heights).reduce((min, group: Object) => (
             Math.max(Object.values(group).reduce((sum, value) => sum + ((value: any): number), 0), min)
         ), 0),
-        minWidth: Object.values(dim.widths).reduce((min, group) => (
+        minWidth: Object.values(dim.widths).reduce((min, group: Object) => (
             Math.max(Object.values(group).reduce((sum, value) => sum + ((value: any): number), 0), min)
         ), 0),
     }), [dim])
+    const onSizeChangeRef = useRef()
+    onSizeChangeRef.current = onSizeChange
+    useEffect(() => {
+        if (typeof onSizeChangeRef.current === 'function') {
+            onSizeChangeRef.current()
+        }
+    }, [minWidth, minHeight])
 
     const value = useMemo(() => ({
         minHeight,

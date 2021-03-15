@@ -1,138 +1,134 @@
-import React, { useContext, useEffect, useMemo, useCallback, useState } from 'react'
+import React, { useContext, useEffect, useMemo, useState } from 'react'
 import { Helmet } from 'react-helmet'
-import LoadingIndicator from '$userpages/components/LoadingIndicator'
 
-import * as RouterContext from '$editor/shared/components/RouterContext'
-import usePending, { useAnyPending, Provider as PendingProvider } from '$editor/shared/hooks/usePending'
-import { Provider as PermissionsProvider } from '$editor/canvas/hooks/useCanvasPermissions'
+import * as RouterContext from '$shared/contexts/Router'
+import { usePending } from '$shared/hooks/usePending'
+import { handleLoadError, canHandleLoadError } from '$auth/utils/loginInterceptor'
 
 import * as CanvasState from '../../state'
-
 import useCanvas from './useCanvas'
 import useCanvasLoadCallback from './useCanvasLoadCallback'
 import useCanvasCreateCallback from './useCanvasCreateCallback'
 import useCanvasRemoveCallback from './useCanvasRemoveCallback'
 import useCanvasDuplicateCallback from './useCanvasDuplicateCallback'
 import useModuleLoadCallback from './useModuleLoadCallback'
+import { EmbedModeContext } from './useEmbedMode'
+import { Provider as PermissionsProvider } from './useCanvasPermissions'
 
-import styles from './CanvasController.pcss'
+const CanvasControllerContext = React.createContext()
+
+export function useController() {
+    return useContext(CanvasControllerContext)
+}
 
 function useCanvasLoadEffect() {
     const canvas = useCanvas()
     const load = useCanvasLoadCallback()
+    const { error, setError } = useController()
     const { match } = useContext(RouterContext.Context)
-    const { isPending } = usePending('LOAD')
+    const { isPending } = usePending('canvas.LOAD')
 
     const { id: urlId } = match.params
     const currentCanvasRootId = canvas && CanvasState.getRootCanvasId(canvas)
     const canvasId = currentCanvasRootId || urlId
+    const shouldLoad = !error && urlId && canvasId && currentCanvasRootId !== canvasId && !isPending
 
     useEffect(() => {
-        if (!urlId) { return } // do nothing if no url id
-        if (canvasId && currentCanvasRootId !== canvasId && !isPending) {
-            // load canvas if needed and not already loading
-            load(canvasId)
+        // load canvas if needed and not already loading
+        if (shouldLoad) {
+            load(canvasId).catch(setError)
         }
-    }, [urlId, canvasId, currentCanvasRootId, load, canvas, isPending])
-}
-
-export function useChangedModuleLoader() {
-    const [changed, setChanged] = useState(new Set())
-    const markChanged = useCallback((id) => {
-        setChanged((changed) => {
-            if (changed.has(id)) { return changed }
-            return new Set([...changed, id])
-        })
-    }, [setChanged])
-
-    const loadChanged = useCallback((prevChanged, canvas, updatedCanvas) => {
-        prevChanged.forEach((hash) => {
-            if (changed.has(hash)) {
-                // item changed again, don't update this round
-                return
-            }
-            canvas = CanvasState.updateModule(canvas, hash, () => (
-                CanvasState.getModule(updatedCanvas, hash)
-            ))
-        })
-        return canvas
-    }, [changed])
-
-    const resetChanged = useCallback(() => {
-        const prev = changed
-        setChanged(new Set())
-        return prev
-    }, [changed])
-
-    return useMemo(() => ({
-        resetChanged,
-        markChanged,
-        loadChanged,
-    }), [resetChanged, markChanged, loadChanged])
-}
-
-export function useController() {
-    const create = useCanvasCreateCallback()
-    const load = useCanvasLoadCallback()
-    const remove = useCanvasRemoveCallback()
-    const duplicate = useCanvasDuplicateCallback()
-    const loadModule = useModuleLoadCallback()
-    const changedLoader = useChangedModuleLoader()
-    return useMemo(() => ({
-        load,
-        create,
-        remove,
-        duplicate,
-        loadModule,
-        changedLoader,
-    }), [load, create, remove, duplicate, loadModule, changedLoader])
+    }, [shouldLoad, canvasId, load, setError])
 }
 
 function useCanvasCreateEffect() {
     const { match } = useContext(RouterContext.Context)
-    const { isPending } = usePending('CREATE')
+    const { isPending } = usePending('canvas.CREATE')
 
+    const { error, setError } = useController()
     const create = useCanvasCreateCallback()
     const { id } = match.params
-
+    const shouldCreate = !error && !id && !isPending
     useEffect(() => {
-        if (id || isPending) { return }
-        create({ replace: true })
-    }, [id, create, isPending])
+        if (shouldCreate) {
+            create({ replace: true }).catch(setError)
+        }
+    }, [shouldCreate, create, setError])
 }
 
 function CanvasEffects() {
     useCanvasCreateEffect()
     useCanvasLoadEffect()
 
-    const { isPending: isPendingCreate } = usePending('CREATE')
-    const { isPending: isPendingLoad } = usePending('LOAD')
-    const { isPending: isPendingRemove } = usePending('REMOVE')
+    const { isPending: isPendingCreate } = usePending('canvas.CREATE')
+    const { isPending: isPendingLoad } = usePending('canvas.LOAD')
+    const { isPending: isPendingRemove } = usePending('canvas.REMOVE')
+    const { isPending: isPendingLoadPermissions } = usePending('canvas.PERMISSIONS')
     return (
         <React.Fragment>
             {!!isPendingCreate && <Helmet title="Creating New Canvas..." />}
-            {!!isPendingLoad && <Helmet title="Loading Canvas..." />}
+            {!!(isPendingLoad || isPendingLoadPermissions) && <Helmet title="Loading Canvas..." />}
             {!!isPendingRemove && <Helmet title="Removing Canvas..." />}
         </React.Fragment>
     )
 }
 
-function CanvasLoadingIndicator() {
-    const isPending = useAnyPending()
+function useError() {
+    const [error, setError] = useState()
+    const { match } = useContext(RouterContext.Context)
+    useEffect(() => {
+        // remove error on route change
+        setError(undefined)
+    }, [match.path])
+    if (error) {
+        if (canHandleLoadError(error)) {
+            handleLoadError({
+                error,
+            })
+            return
+        }
+        // propagate error to error boundary
+        throw error
+    }
+    return [error, setError]
+}
+
+function useCanvasController() {
+    const create = useCanvasCreateCallback()
+    const load = useCanvasLoadCallback()
+    const remove = useCanvasRemoveCallback()
+    const duplicate = useCanvasDuplicateCallback()
+    const loadModule = useModuleLoadCallback()
+    const [error, setError] = useError()
+    return useMemo(() => ({
+        error,
+        setError,
+        load,
+        create,
+        remove,
+        duplicate,
+        loadModule,
+    }), [load, create, remove, duplicate, loadModule, error, setError])
+}
+
+function ControllerProvider({ children }) {
     return (
-        <LoadingIndicator className={styles.LoadingIndicator} loading={isPending} />
+        <CanvasControllerContext.Provider value={useCanvasController()}>
+            {children}
+        </CanvasControllerContext.Provider>
     )
 }
 
-const CanvasControllerProvider = ({ children }) => (
+const CanvasControllerProvider = ({ children, embed }) => (
     <RouterContext.Provider>
-        <PendingProvider>
+        <EmbedModeContext.Provider value={!!embed}>
             <PermissionsProvider>
-                <CanvasLoadingIndicator />
-                <CanvasEffects />
-                {children || null}
+                <ControllerProvider embed={embed}>
+                    <CanvasEffects />
+                    {children || null}
+                </ControllerProvider>
             </PermissionsProvider>
-        </PendingProvider>
+        </EmbedModeContext.Provider>
     </RouterContext.Provider>
 )
 

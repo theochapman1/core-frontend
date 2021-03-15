@@ -1,98 +1,83 @@
 // @flow
 
-import React from 'react'
-import { connect } from 'react-redux'
-import { Translate, I18n } from 'react-redux-i18n'
-import { Button } from 'reactstrap'
+import React, { useCallback } from 'react'
+import { useDispatch } from 'react-redux'
+import styled from 'styled-components'
 
-import profileStyles from '../profilePage.pcss'
-import styles from './deleteAccount.pcss'
-
+import Button from '$shared/components/Button'
+import useModal from '$shared/hooks/useModal'
+import usePending from '$shared/hooks/usePending'
+import useIsMounted from '$shared/hooks/useIsMounted'
+import { logout } from '$shared/modules/user/actions'
+import Notification from '$shared/utils/Notification'
+import { NotificationIcon } from '$shared/utils/constants'
+import { MD, LG } from '$shared/utils/styled'
+import Description from '../Description'
 import DeleteAccountDialog from './DeleteAccountDialog'
-import { deleteUserAccount } from '$shared/modules/user/actions'
-import { selectDeletingUserAccount } from '$shared/modules/user/selectors'
-import type { StoreState } from '$shared/flowtype/store-state'
 
-type State = {
-    modalOpen: boolean,
+const RemoveButton = styled(Button)`
+    @media (min-width: ${MD}px) {
+        margin-top: 3.75rem;
+    }
+
+    @media (min-width: ${LG}px) {
+        margin-top: 3rem;
+    }
+`
+
+const DeleteAccount = () => {
+    const { api: deleteAccountDialog, isOpen } = useModal('userpages.deleteAccount')
+    const { wrap, isPending: isDeleteDialogPending } = usePending('user.DELETE_ACCOUNT_DIALOG')
+    const { isPending: isSavePending } = usePending('user.SAVE')
+    const dispatch = useDispatch()
+    const isMounted = useIsMounted()
+
+    const deleteAccount = useCallback(async () => (
+        wrap(async () => {
+            const { deleted, error } = await deleteAccountDialog.open()
+
+            if (isMounted()) {
+                if (error) {
+                    Notification.push({
+                        title: 'Account not disabled',
+                        icon: NotificationIcon.ERROR,
+                    })
+                } else if (deleted) {
+                    Notification.push({
+                        title: 'Account disabled!',
+                        icon: NotificationIcon.CHECKMARK,
+                    })
+                    setTimeout(() => {
+                        if (isMounted()) {
+                            dispatch(logout())
+                        }
+                    }, 500)
+                }
+            }
+        })
+    ), [wrap, deleteAccountDialog, isMounted, dispatch])
+
+    return (
+        <div>
+            <Description>
+                Unlike other companies that deactivate your account but retain your data,
+                {' '}
+                if you delete your Streamr account, all your data is deleted from our servers and will be unrecoverable.
+                {' '}
+                Please proceed with caution.
+            </Description>
+            <RemoveButton
+                kind="destructive"
+                onClick={deleteAccount}
+                disabled={isOpen || isSavePending}
+                aria-label="Delete account"
+                waiting={isDeleteDialogPending}
+            >
+                Delete account
+            </RemoveButton>
+            <DeleteAccountDialog />
+        </div>
+    )
 }
 
-type StateProps = {
-    deletingUserAccount: boolean,
-}
-type DispatchProps = {
-    deleteAccount: () => Promise<void>,
-}
-
-type Props = StateProps & DispatchProps
-
-class DeleteAccount extends React.Component<Props, State> {
-    state = {
-        modalOpen: false,
-    }
-
-    unmounted: boolean = false
-
-    componentWillUnmount() {
-        this.unmounted = true
-    }
-
-    openModal = () => {
-        if (!this.unmounted) {
-            this.setState({
-                modalOpen: true,
-            })
-        }
-    }
-
-    onClose = () => {
-        if (!this.unmounted) {
-            this.setState({
-                modalOpen: false,
-            })
-        }
-    }
-
-    onSave = () => this.props.deleteAccount()
-
-    render() {
-        const { modalOpen } = this.state
-        const { deletingUserAccount } = this.props
-
-        return (
-            <div>
-                <Translate value="userpages.profilePage.deleteAccount.description" tag="p" className={profileStyles.longText} />
-                <div className={styles.button}>
-                    <Button
-                        outline
-                        type="button"
-                        color="userpages"
-                        className={styles.button}
-                        onClick={this.openModal}
-                        disabled={modalOpen}
-                        aria-label={I18n.t('userpages.profilePage.deleteAccount.button')}
-                    >
-                        <Translate value="userpages.profilePage.deleteAccount.button" />
-                    </Button>
-                    {!!modalOpen && (
-                        <DeleteAccountDialog
-                            waiting={deletingUserAccount}
-                            onClose={this.onClose}
-                            onSave={this.onSave}
-                        />
-                    )}
-                </div>
-            </div>
-        )
-    }
-}
-
-const mapStateToProps = (state: StoreState): StateProps => ({
-    deletingUserAccount: selectDeletingUserAccount(state),
-})
-
-const mapDispatchToProps = (dispatch: Function): DispatchProps => ({
-    deleteAccount: () => dispatch(deleteUserAccount()),
-})
-
-export default connect(mapStateToProps, mapDispatchToProps)(DeleteAccount)
+export default DeleteAccount

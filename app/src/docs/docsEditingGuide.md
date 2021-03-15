@@ -27,9 +27,9 @@ H3: Nested section title
 For short inline text code snippets, the native MD implementation is suitable. When working with longer code snippets we use our CodeSnippet component that uses `react-syntax-highlighter` under the hood. It's best to export the code snippets from `/src/docs/code/...` as the raw code can sometimes interfere with the markdown parser. 
 
 ```
-import CodeSnippet from '$shared/components/CodeSnippet'
+import { CodeSnippet } from '@streamr/streamr-layout'
 
-<CodeSnippet language='javascript' wrapLines showLineNumbers >{referencedCodeSnippet}</CodeSnippet> 
+<CodeSnippet language="javascript" wrapLines showLineNumbers >{referencedCodeSnippet}</CodeSnippet> 
 
 ```
 
@@ -47,14 +47,14 @@ import DataStream from './images/tutorials/data-stream.png'
 ```
 
 ### In-page navigation
-The navigation that powers the sidebar, mobile and page turner controls is found in `/src/docs/components/DocsLayout/Navigation/`. The `ScrollableAnchor` library is used with this to navigate to, and highlight each section on scroll. Each sub navigation section should be wrapped with a ScrollableAnchor. In general, surrounding html/jsx elements with a empty lines helps the MDX parser switch from MD to JSX.
+The navigation that powers the sidebar, mobile and page turner controls is found in `/src/docs/components/DocsLayout/Navigation/`. In general, surrounding html/jsx elements with a empty lines helps the MDX parser switch from MD to JSX.
 
 E.G.
 
 ```
-<ScrollableAnchor id="publish-to-a-stream"><div>
+<section id="publish-to-a-stream">
 
 ... content ... 
 
-</div></ScrollableAnchor>
+</section>
 ```

@@ -1,9 +1,10 @@
 // @flow
 
 import React, { type Node } from 'react'
-import { I18n } from 'react-redux-i18n'
 
+import ModalPortal from '$shared/components/ModalPortal'
 import Dialog from '$shared/components/Dialog'
+import PngIcon from '$shared/components/PngIcon'
 
 export type Props = {
     title?: string,
@@ -13,20 +14,16 @@ export type Props = {
 }
 
 const ErrorDialog = ({ title, message, waiting, onClose }: Props) => (
-    <Dialog
-        title={title || I18n.t('modal.errorDialog.defaultTitle')}
-        waiting={waiting}
-        onClose={onClose}
-        actions={{
-            dismiss: {
-                title: I18n.t('modal.common.ok'),
-                color: 'primary',
-                onClick: onClose,
-            },
-        }}
-    >
-        {message}
-    </Dialog>
+    <ModalPortal>
+        <Dialog
+            title={title || 'Error'}
+            waiting={waiting}
+            onClose={onClose}
+        >
+            <PngIcon name="walletError" />
+            <p>{message}</p>
+        </Dialog>
+    </ModalPortal>
 )
 
 ErrorDialog.defaultProps = {

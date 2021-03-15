@@ -9,7 +9,7 @@ import EventEmitter from 'events'
 import t from 'prop-types'
 import React from 'react'
 
-import { ClientContext } from './Client'
+import * as services from '$editor/shared/services'
 
 /**
  * Supplies default implementation of loadRunState to RunStateLoader.
@@ -23,8 +23,6 @@ export default class RunStateLoaderContainer extends React.PureComponent {
         dashboardId: t.string,
     }
 
-    static contextType = ClientContext
-
     loadRunState = async () => {
         const { canvasId, dashboardId, moduleHash, canvas } = this.props
 
@@ -35,7 +33,7 @@ export default class RunStateLoaderContainer extends React.PureComponent {
             type: 'json',
         }
 
-        const res = await this.context.send({
+        const res = await services.send({
             data,
             canvasId,
             dashboardId,

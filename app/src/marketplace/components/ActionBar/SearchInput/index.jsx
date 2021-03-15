@@ -1,7 +1,6 @@
 // @flow
 
 import React from 'react'
-import { I18n } from 'react-redux-i18n'
 import cx from 'classnames'
 
 import SvgIcon from '$shared/components/SvgIcon'
@@ -14,18 +13,32 @@ import styles from './searchInput.pcss'
 type Props = {
     value: ?SearchFilter,
     onChange: (text: SearchFilter) => void,
-    onClear: () => void,
+    onClear?: () => void,
+    placeholder?: string,
+    className?: string,
+    hideClearButton?: boolean,
+    autoFocus?: boolean,
+    hidePlaceholderOnFocus?: boolean,
 }
 
-const SearchInput = ({ value, onChange, onClear }: Props) => (
-    <div className={styles.searchInput}>
+const SearchInput = ({
+    value,
+    onChange,
+    onClear,
+    placeholder = 'Search the Marketplace for',
+    className,
+    hideClearButton,
+    hidePlaceholderOnFocus,
+    autoFocus,
+}: Props) => (
+    <div className={cx(className, styles.searchInput)}>
         <UseState initialValue={false}>
             {(editing, setEditing) => (
                 <EditableText
                     className={cx(styles.input, {
                         [styles.editing]: editing,
                     })}
-                    placeholder={I18n.t('actionBar.searchInput.placeholder')}
+                    placeholder={placeholder}
                     value={value}
                     onChange={onChange}
                     editOnFocus
@@ -33,6 +46,8 @@ const SearchInput = ({ value, onChange, onClear }: Props) => (
                     commitEmpty
                     editing={editing}
                     setEditing={setEditing}
+                    autoFocus={autoFocus}
+                    hidePlaceholderOnFocus={hidePlaceholderOnFocus}
                 >
                     {value || ''}
                 </EditableText>
@@ -42,7 +57,7 @@ const SearchInput = ({ value, onChange, onClear }: Props) => (
             type="button"
             className={styles.clearButton}
             onClick={onClear}
-            hidden={value === ''}
+            hidden={hideClearButton || (value === '' && !hideClearButton)}
         >
             <SvgIcon name="cross" />
         </button>

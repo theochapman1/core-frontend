@@ -2,6 +2,7 @@
 
 import Web3 from 'web3'
 
+import FakeProvider from 'web3-fake-provider'
 import getConfig from '$shared/web3/config'
 import type { Address } from '$shared/flowtype/web3-types'
 import {
@@ -10,10 +11,15 @@ import {
     WalletLockedError,
 } from '$shared/errors/Web3/index'
 import { checkEthereumNetworkIsCorrect } from '$shared/utils/web3'
-import FakeProvider from 'web3-fake-provider'
 
 declare var ethereum: Web3
 declare var web3: Web3
+
+// Disable automatic reload when network is changed in Metamask,
+// reload is handled in GlobalInfoWatcher component
+if (window.ethereum) {
+    window.ethereum.autoRefreshOnNetworkChange = false
+}
 
 type StreamrWeb3Options = {
     isLegacy?: boolean,
@@ -21,10 +27,15 @@ type StreamrWeb3Options = {
 
 export class StreamrWeb3 extends Web3 {
     isLegacy: boolean
+    metamaskProvider: any
 
     constructor(provider: any, options: StreamrWeb3Options = {}) {
         super(provider)
+        this.metamaskProvider = provider
         this.isLegacy = options && !!options.isLegacy
+        // Set number of desired confirmations for transactions.
+        // This needs to be 1 for local Ganache chain. Default is 24.
+        this.transactionConfirmationBlocks = getConfig().transactionConfirmationBlocks
     }
 
     getDefaultAccount = (): Promise<Address> => this.eth.getAccounts()
@@ -63,7 +74,12 @@ export const getWeb3 = (): StreamrWeb3 => {
     })
 }
 
-export const validateWeb3 = async (_web3: Web3): Web3 => {
+type ValidateParams = {
+    web3: Web3,
+    checkNetwork?: boolean,
+}
+
+export const validateWeb3 = async ({ web3: _web3, checkNetwork = true }: ValidateParams): Web3 => {
     if ((_web3.isLegacy && !window.web3) ||
         (!_web3.isLegacy && !window.ethereum)) {
         throw new Web3NotSupportedError()
@@ -72,7 +88,16 @@ export const validateWeb3 = async (_web3: Web3): Web3 => {
     // enable metamask
     if (!_web3.isLegacy) {
         try {
-            await ethereum.enable()
+            // ethereum.enable() is deprecated and may be removed in the future.
+            // Prefer 'eth_requestAccounts' RPC method instead
+            if (typeof ethereum.request === 'function') {
+                await ethereum.request({
+                    method: 'eth_requestAccounts',
+                })
+            } else {
+                // ethereum.request is available since MetaMask v. 8, fallback to ethereum.enable()
+                await ethereum.enable()
+            }
         } catch (e) {
             console.warn(e)
             throw new Web3NotEnabledError()
@@ -96,7 +121,9 @@ export const validateWeb3 = async (_web3: Web3): Web3 => {
     }
 
     // Validate correct network
-    await checkEthereumNetworkIsCorrect(_web3)
+    if (checkNetwork) {
+        await checkEthereumNetworkIsCorrect(_web3)
+    }
 
     return _web3
 }

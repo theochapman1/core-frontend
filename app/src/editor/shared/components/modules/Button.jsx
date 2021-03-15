@@ -2,9 +2,9 @@ import React from 'react'
 import cx from 'classnames'
 import throttle from 'lodash/throttle'
 
+import ButtonStyles from '$shared/components/Button/button.pcss'
 import ModuleSubscription from '../ModuleSubscription'
 
-import ButtonStyles from '$shared/components/Button/button.pcss'
 import styles from './Button.pcss'
 
 function getModuleButtonName(module) {
@@ -60,6 +60,7 @@ export default class ButtonModule extends React.Component {
     }
 
     render() {
+        const { hasInteractPermission, isActive } = this.props
         return (
             <div className={cx(this.props.className, styles.Button)}>
                 <ModuleSubscription
@@ -70,7 +71,12 @@ export default class ButtonModule extends React.Component {
                     onActiveChange={this.onActiveChange}
                     ref={this.subscription}
                 />
-                <button className={cx(styles.button, ButtonStyles.btn, ButtonStyles.btnPrimary)} onClick={this.onClick}>
+                <button
+                    type="button"
+                    disabled={!hasInteractPermission || !isActive}
+                    className={cx(styles.button, ButtonStyles.btn, ButtonStyles.btnPrimary)}
+                    onClick={this.onClick}
+                >
                     {this.getValue()}
                 </button>
             </div>

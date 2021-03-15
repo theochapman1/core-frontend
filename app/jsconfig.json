@@ -7,13 +7,13 @@
       "$app/**/*": ["./**/*"],
       "$auth/**/*": ["src/auth/**/*"],
       "$docs/**/*": ["src/docs/**/*"],
-      "$newdocs/**/*": ["src/newdocs/**/*"],
       "$mp/**/*": ["src/marketplace/**/*"],
       "$userpages/**/*": ["src/userpages/**/*"],
       "$routes**/*": ["src/routes/**/*"],
       "$shared/**/*": ["src/shared/**/*"],
       "$editor/**/*": ["src/editor/**/*"],
       "$testUtils/**/*": ["src/test/test-utils/**/*"],
+      "$ui/**/*": ["src/shared/components/Ui/**/*"],
       "$utils/**/*": ["src/utils/**/*"]
     }
   },

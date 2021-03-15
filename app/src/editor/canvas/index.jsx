@@ -1,49 +1,66 @@
-import React, { Component, useContext } from 'react'
-import { withRouter } from 'react-router-dom'
-import { Helmet } from 'react-helmet'
+import React, { PureComponent, useContext } from 'react'
+import { Link, withRouter } from 'react-router-dom'
+import { connect } from 'react-redux'
+import cx from 'classnames'
+import copyToClipboard from 'copy-to-clipboard'
 
-import Layout from '$mp/components/Layout'
+import { selectAuthState } from '$shared/modules/user/selectors'
+import SessionContext from '$auth/contexts/Session'
+
+import { CoreHelmet } from '$shared/components/Helmet'
+import Layout from '$shared/components/Layout'
 import withErrorBoundary from '$shared/utils/withErrorBoundary'
-import ErrorComponentView from '$shared/components/ErrorComponentView'
+import { ErrorPageContent } from '$shared/components/GenericErrorPage'
 
-import links from '../../links'
-
-import UndoContainer, { UndoControls } from '$editor/shared/components/UndoContainer'
-import Subscription from '$editor/shared/components/Subscription'
-import * as SubscriptionStatus from '$editor/shared/components/SubscriptionStatus'
-import { ClientProvider } from '$editor/shared/components/Client'
-import { ModalProvider } from '$editor/shared/components/Modal'
+import { findNonOverlappingPositionForModule } from '$editor/shared/utils/bounds'
+import isEditableElement from '$shared/utils/isEditableElement'
+import UndoControls from '$editor/shared/components/UndoControls'
+import Button from '$shared/components/Button'
+import * as UndoContext from '$shared/contexts/Undo'
+import { Provider as PendingProvider } from '$shared/contexts/Pending'
+import { Subscription } from '$editor/shared/components/ModuleSubscription'
+import * as SubscriptionStatus from '$shared/contexts/SubscriptionStatus'
+import ClientProvider from '$shared/components/StreamrClientProvider'
 import * as sharedServices from '$editor/shared/services'
-import BodyClass from '$shared/components/BodyClass'
-import Sidebar from '$editor/shared/components/Sidebar'
-import ModuleSidebar from './components/ModuleSidebar'
-import KeyboardShortcutsSidebar from './components/KeyboardShortcutsSidebar'
 
+import BodyClass from '$shared/components/BodyClass'
+import Sidebar from '$shared/components/Sidebar'
+import ShareSidebar from '$userpages/components/ShareSidebar'
+import CanvasStatus, { CannotSaveStatus } from '$editor/shared/components/Status'
+import ResourceNotFoundError from '$shared/errors/ResourceNotFoundError'
+import SidebarProvider, { useSidebar } from '$shared/components/Sidebar/SidebarProvider'
+import routes from '$routes'
+
+import { useCanvasSelection, SelectionProvider } from './components/CanvasController/useCanvasSelection'
+import ModuleSidebar from './components/ModuleSidebar'
+import ConsoleSidebar from './components/ConsoleSidebar'
+import KeyboardShortcutsSidebar from './components/KeyboardShortcutsSidebar'
+import { CameraProvider, cameraControl } from './components/Camera'
+import { useCanvasCameraEffects } from './hooks/useCanvasCamera'
 import * as CanvasController from './components/CanvasController'
 import * as RunController from './components/CanvasController/Run'
 import useCanvas from './components/CanvasController/useCanvas'
 import useCanvasUpdater from './components/CanvasController/useCanvasUpdater'
+import { AutosaveProvider } from './components/CanvasController/Autosave'
 import useUpdatedTime from './components/CanvasController/useUpdatedTime'
+import useEmbedMode from './components/CanvasController/useEmbedMode'
+import useCanvasPermissions from './components/CanvasController/useCanvasPermissions'
 
+import PendingLoadingIndicator from './components/PendingLoadingIndicator'
 import Canvas from './components/Canvas'
 import CanvasToolbar from './components/Toolbar'
-import CanvasStatus, { CannotSaveStatus } from './components/Status'
 import ModuleSearch from './components/ModuleSearch'
+import EmbedToolbar from './components/EmbedToolbar'
 
 import useCanvasNotifications, { pushErrorNotification, pushWarningNotification } from './hooks/useCanvasNotifications'
 
-import * as services from './services'
 import * as CanvasState from './state'
 
 import styles from './index.pcss'
 
-const { RunStates } = CanvasState
-
-const CanvasEditComponent = class CanvasEdit extends Component {
+const CanvasEditComponent = class CanvasEdit extends PureComponent {
     state = {
-        moduleSearchIsOpen: this.props.runController.isEditable,
-        moduleSidebarIsOpen: false,
-        keyboardShortcutIsOpen: false,
+        moduleSearchIsOpen: true,
     }
 
     setCanvas = (action, fn, done) => {
@@ -63,84 +80,95 @@ const CanvasEditComponent = class CanvasEdit extends Component {
     }
 
     moduleSidebarOpen = (show = true) => {
-        this.setState({
-            moduleSidebarIsOpen: !!show,
-            keyboardShortcutIsOpen: false,
-        })
+        this.props.sidebar.open('module', show)
     }
 
-    moduleSidebarClose = () => {
-        this.moduleSidebarOpen(false)
+    consoleSidebarOpen = (show = true) => {
+        this.props.sidebar.open('console', show)
     }
 
-    keyboardShortcutOpen = (show = true) => {
-        this.setState({
-            moduleSidebarIsOpen: !!show,
-            keyboardShortcutIsOpen: !!show,
-        })
+    closeSidebar = () => {
+        const { sidebar, loadPermissions, canvas } = this.props
+
+        // If share sidebar was open, load permissions again to react to own permission changes
+        if (sidebar.isOpen('share')) {
+            loadPermissions(canvas.id)
+        }
+
+        sidebar.close()
     }
 
     selectModule = async ({ hash } = {}) => {
-        this.setState(({ moduleSidebarIsOpen, keyboardShortcutIsOpen }) => ({
-            selectedModuleHash: hash,
-            // close sidebar if no selection
-            moduleSidebarIsOpen: hash == null ? keyboardShortcutIsOpen : moduleSidebarIsOpen,
-        }))
+        const noSelection = hash == null
+
+        if (noSelection) {
+            this.closeSidebar()
+            this.props.selection.none()
+            // remove focus on deselect
+            if (document.activeElement) {
+                document.activeElement.blur()
+            }
+        } else {
+            this.props.selection.only(hash)
+        }
     }
 
     onKeyDown = (event) => {
+        // ignore if event from form element
+        if (isEditableElement(event.target || event.srcElement)) { return }
+
         const hash = Number(event.target.dataset.modulehash)
         if (Number.isNaN(hash)) {
             return
         }
+        const { runController } = this.props
 
-        if (event.code === 'Backspace' || event.code === 'Delete') {
+        if ((event.code === 'Backspace' || event.code === 'Delete') && runController.isEditable) {
+            event.preventDefault() // important. prevents stupid browser back on backspace behaviour
+            event.stopPropagation()
             this.removeModule({ hash })
+        }
+
+        if (event.key === 'Escape') {
+            // select none on escape
+            event.preventDefault()
+            event.stopPropagation()
+            this.selectModule({ hash: undefined })
+        }
+
+        if ((event.metaKey || event.ctrlKey)) {
+            // copy|cut
+            if (event.key === 'c' || event.key === 'x') {
+                event.preventDefault()
+                event.stopPropagation()
+                copyToClipboard(JSON.stringify(CanvasState.getModuleCopy(this.props.canvas, hash)))
+                // cut
+                if (event.key === 'x' && runController.isEditable) {
+                    this.removeModule({ hash })
+                }
+            }
         }
     }
 
     componentDidMount() {
         window.addEventListener('keydown', this.onKeyDown)
-        this.autosave()
+        document.body.addEventListener('paste', this.onPaste)
         this.autostart()
     }
 
     componentWillUnmount() {
         this.unmounted = true
         window.removeEventListener('keydown', this.onKeyDown)
-        this.autosave()
-    }
-
-    componentDidUpdate(prevProps) {
-        if (this.props.canvas !== prevProps.canvas) {
-            this.autosave()
-        }
+        document.body.removeEventListener('paste', this.onPaste)
     }
 
     async autostart() {
         const { canvas, runController } = this.props
         if (this.isDeleted) { return } // do not autostart deleted canvases
-        if (canvas.adhoc && !runController.isActive) {
+        if (canvas.adhoc && !runController.isActive && !runController.isStopping) {
             // do not autostart running/non-adhoc canvases
             return this.canvasStart()
         }
-    }
-
-    async autosave() {
-        const { canvas, runController, canvasController } = this.props
-        if (this.isDeleted) { return } // do not autosave deleted canvases
-        if (!runController.isEditable) {
-            // do not autosave running/adhoc canvases or if we have no write permission
-            return
-        }
-
-        const changed = canvasController.changedLoader.resetChanged()
-
-        const newCanvas = await services.autosave(canvas)
-        if (this.unmounted) { return }
-        // ignore new canvas, just extract updated time from it
-        this.props.setUpdated(newCanvas.updated)
-        this.props.replace((canvas) => this.props.canvasController.changedLoader.loadChanged(changed, canvas, newCanvas))
     }
 
     removeModule = async ({ hash }) => {
@@ -153,6 +181,8 @@ const CanvasEditComponent = class CanvasEdit extends Component {
     addModule = async ({ id, configuration }) => {
         const { canvas, canvasController } = this.props
         const action = { type: 'Add Module' }
+
+        configuration.layout.position = findNonOverlappingPositionForModule(canvas, configuration)
         const moduleData = await canvasController.loadModule(canvas, {
             ...configuration,
             id,
@@ -161,7 +191,10 @@ const CanvasEditComponent = class CanvasEdit extends Component {
         if (this.unmounted) { return }
 
         this.setCanvas(action, (canvas) => (
-            CanvasState.addModule(canvas, moduleData)
+            CanvasState.addModule(canvas, {
+                ...moduleData,
+                layout: configuration.layout,
+            })
         ))
     }
 
@@ -190,7 +223,9 @@ const CanvasEditComponent = class CanvasEdit extends Component {
     }
 
     newCanvas = async () => {
-        this.props.history.push(links.editor.canvasEditor)
+        this.props.history.push(routes.canvases.edit({
+            id: null,
+        }))
     }
 
     renameCanvas = (name) => {
@@ -209,19 +244,6 @@ const CanvasEditComponent = class CanvasEdit extends Component {
         ))
     }
 
-    loadNewDefinition = async (hash) => {
-        const { canvas, canvasController, replace } = this.props
-        try {
-            const moduleData = await canvasController.loadModule(canvas, { hash })
-            if (this.unmounted) { return }
-            replace((canvas) => CanvasState.replaceModule(canvas, moduleData))
-        } catch (error) {
-            console.error(error.message)
-            // undo value change
-            this.props.undo()
-        }
-    }
-
     pushNewDefinition = async (hash, value) => {
         const module = CanvasState.getModule(this.props.canvas, hash)
 
@@ -237,7 +259,8 @@ const CanvasEditComponent = class CanvasEdit extends Component {
         if (this.unmounted) { return }
 
         this.replaceCanvas((canvas) => (
-            CanvasState.updateModule(canvas, hash, () => newModule)
+            // use replaceModule to maintain connections & other state as much as possible
+            CanvasState.replaceModule(canvas, newModule)
         ))
     }
 
@@ -254,8 +277,6 @@ const CanvasEditComponent = class CanvasEdit extends Component {
         this.setCanvas({ type: 'Set Module Options' }, (canvas) => (
             CanvasState.setModuleOptions(canvas, hash, options)
         ))
-
-        this.props.canvasController.changedLoader.markChanged(hash)
     }
 
     setRunTab = (runTab) => {
@@ -311,9 +332,11 @@ const CanvasEditComponent = class CanvasEdit extends Component {
         await canvasController.load(canvas.id)
     }
 
-    onDoneMessage = () => (
-        this.loadSelf()
-    )
+    onDoneMessage = () => {
+        const { runController } = this.props
+        if (runController.isStopping) { return } // don't load if stopping
+        return this.loadSelf()
+    }
 
     onErrorMessage = (error) => {
         pushErrorNotification({
@@ -338,8 +361,36 @@ const CanvasEditComponent = class CanvasEdit extends Component {
         })
     }
 
+    onPaste = (event) => {
+        const { runController } = this.props
+        if (!runController.isEditable) { return } // ignore if not editable
+        // prevent handling paste in form fields
+        if (isEditableElement(event.target || event.srcElement)) { return }
+        event.preventDefault()
+        event.stopPropagation()
+        const clipboardContent = event.clipboardData.getData('text/plain')
+        let moduleData
+        try {
+            moduleData = JSON.parse(clipboardContent)
+        } catch (error) {
+            // ignore
+        }
+        if (!moduleData || moduleData.id == null) {
+            // doesn't look like a module
+            return
+        }
+
+        this.addAndSelectModule({
+            id: moduleData.id,
+            configuration: {
+                ...moduleData,
+                hash: undefined, // never use hash
+            },
+        })
+    }
+
     render() {
-        const { canvas, runController } = this.props
+        const { canvas, runController, isEmbedMode, sidebar } = this.props
         if (!canvas) {
             return (
                 <div className={styles.CanvasEdit}>
@@ -347,13 +398,13 @@ const CanvasEditComponent = class CanvasEdit extends Component {
                 </div>
             )
         }
-        const { moduleSidebarIsOpen, keyboardShortcutIsOpen } = this.state
+        const { isEditable } = runController
         const { settings } = canvas
         const resendFrom = settings.beginDate
         const resendTo = settings.endDate
         return (
-            <div className={styles.CanvasEdit}>
-                <Helmet title={`${canvas.name} | Streamr Core`} />
+            <div className={cx(styles.CanvasEdit, cameraControl)} onPaste={this.onPaste}>
+                <CoreHelmet title={canvas.name} />
                 <Subscription
                     uiChannel={canvas.uiChannel}
                     resendFrom={canvas.adhoc ? resendFrom : undefined}
@@ -366,14 +417,14 @@ const CanvasEditComponent = class CanvasEdit extends Component {
                 <Canvas
                     className={styles.Canvas}
                     canvas={canvas}
-                    selectedModuleHash={this.state.selectedModuleHash}
+                    selectedModuleHash={this.props.selection.last()}
                     selectModule={this.selectModule}
                     updateModule={this.updateModule}
                     renameModule={this.renameModule}
                     moduleSidebarOpen={this.moduleSidebarOpen}
-                    moduleSidebarIsOpen={moduleSidebarIsOpen && !keyboardShortcutIsOpen}
+                    moduleSidebarIsOpen={sidebar.isOpen('module')}
+                    consoleSidebarOpen={this.consoleSidebarOpen}
                     setCanvas={this.setCanvas}
-                    loadNewDefinition={this.loadNewDefinition}
                     pushNewDefinition={this.pushNewDefinition}
                 >
                     {runController.hasWritePermission ? (
@@ -382,77 +433,112 @@ const CanvasEditComponent = class CanvasEdit extends Component {
                         <CannotSaveStatus />
                     )}
                 </Canvas>
-                <ModalProvider>
-                    <CanvasToolbar
-                        className={styles.CanvasToolbar}
-                        canvas={canvas}
-                        setCanvas={this.setCanvas}
-                        renameCanvas={this.renameCanvas}
-                        deleteCanvas={this.deleteCanvas}
-                        newCanvas={this.newCanvas}
-                        duplicateCanvas={this.duplicateCanvas}
-                        moduleSearchIsOpen={this.state.moduleSearchIsOpen}
-                        moduleSearchOpen={this.moduleSearchOpen}
-                        setRunTab={this.setRunTab}
-                        setHistorical={this.setHistorical}
-                        setSpeed={this.setSpeed}
-                        setSaveState={this.setSaveState}
-                        canvasStart={this.canvasStart}
-                        canvasStop={this.canvasStop}
-                        keyboardShortcutOpen={this.keyboardShortcutOpen}
-                        canvasExit={this.canvasExit}
-                    />
-                </ModalProvider>
-                <Sidebar
-                    className={styles.ModuleSidebar}
-                    isOpen={moduleSidebarIsOpen}
-                >
-                    {moduleSidebarIsOpen && keyboardShortcutIsOpen && (
-                        <KeyboardShortcutsSidebar
-                            onClose={() => this.keyboardShortcutOpen(false)}
-                        />
-                    )}
-                    {moduleSidebarIsOpen && !keyboardShortcutIsOpen && (
-                        <ModuleSidebar
-                            onClose={this.moduleSidebarClose}
+                {isEmbedMode ? <EmbedToolbar canvas={canvas} /> : (
+                    <React.Fragment>
+                        <CanvasToolbar
+                            className={styles.CanvasToolbar}
                             canvas={canvas}
-                            selectedModuleHash={this.state.selectedModuleHash}
-                            setModuleOptions={this.setModuleOptions}
+                            setCanvas={this.setCanvas}
+                            renameCanvas={this.renameCanvas}
+                            deleteCanvas={this.deleteCanvas}
+                            newCanvas={this.newCanvas}
+                            duplicateCanvas={this.duplicateCanvas}
+                            moduleSearchIsOpen={this.state.moduleSearchIsOpen}
+                            moduleSearchOpen={this.moduleSearchOpen}
+                            setRunTab={this.setRunTab}
+                            setHistorical={this.setHistorical}
+                            setSpeed={this.setSpeed}
+                            setSaveState={this.setSaveState}
+                            canvasStart={this.canvasStart}
+                            canvasStop={this.canvasStop}
+                            canvasExit={this.canvasExit}
+                            sidebar={sidebar}
                         />
-                    )}
-                </Sidebar>
-                <ModuleSearch
-                    addModule={this.addAndSelectModule}
-                    isOpen={this.state.moduleSearchIsOpen}
-                    open={this.moduleSearchOpen}
-                    canvas={canvas}
-                />
+                        <Sidebar.WithErrorBoundary
+                            className={styles.ModuleSidebar}
+                            isOpen={sidebar.isOpen()}
+                        >
+                            {sidebar.isOpen('keyboardShortcuts') && (
+                                <KeyboardShortcutsSidebar
+                                    onClose={() => sidebar.close('keyboardShortcuts')}
+                                />
+                            )}
+                            {sidebar.isOpen('module') && (
+                                <ModuleSidebar
+                                    onClose={() => sidebar.close('module')}
+                                    canvas={canvas}
+                                    selectedModuleHash={this.props.selection.last()}
+                                    setModuleOptions={this.setModuleOptions}
+                                />
+                            )}
+                            {sidebar.isOpen('console') && (
+                                <ConsoleSidebar
+                                    onClose={() => sidebar.close('console')}
+                                    canvas={canvas}
+                                    selectedModuleHash={this.props.selection.last()}
+                                    selectModule={this.selectModule}
+                                />
+                            )}
+                            {sidebar.isOpen('share') && (
+                                <ShareSidebar
+                                    sidebarName="share"
+                                    resourceTitle={canvas.name}
+                                    resourceType="CANVAS"
+                                    resourceId={canvas.id}
+                                    onClose={this.closeSidebar}
+                                />
+                            )}
+                        </Sidebar.WithErrorBoundary>
+                        <ModuleSearch
+                            addModule={this.addAndSelectModule}
+                            isOpen={isEditable && this.state.moduleSearchIsOpen}
+                            open={this.moduleSearchOpen}
+                            canvas={canvas}
+                        />
+                    </React.Fragment>
+                )}
             </div>
         )
     }
 }
 
-const CanvasEdit = withRouter(({ canvas, ...props }) => {
+const CanvasEdit = withRouter((props) => {
+    const canvas = useCanvas()
+    const { replaceCanvas, setCanvas } = useCanvasUpdater()
+    const { undo } = useContext(UndoContext.Context)
     const runController = useContext(RunController.Context)
     const canvasController = CanvasController.useController()
     const [updated, setUpdated] = useUpdatedTime(canvas.updated)
+    const isEmbedMode = useEmbedMode()
     useCanvasNotifications(canvas)
+    useCanvasCameraEffects()
+    const selection = useCanvasSelection()
+    const sidebar = useSidebar()
+    const { loadPermissions } = useCanvasPermissions()
 
     return (
-        <CanvasEditComponent
-            {...props}
-            canvas={canvas}
-            runController={runController}
-            canvasController={canvasController}
-            updated={updated}
-            setUpdated={setUpdated}
-        />
+        <AutosaveProvider>
+            <UndoControls disabled={!runController.isEditable} />
+            <CanvasEditComponent
+                {...props}
+                replace={replaceCanvas}
+                push={setCanvas}
+                undo={undo}
+                isEmbedMode={isEmbedMode}
+                canvas={canvas}
+                runController={runController}
+                canvasController={canvasController}
+                updated={updated}
+                setUpdated={setUpdated}
+                selection={selection}
+                sidebar={sidebar}
+                loadPermissions={loadPermissions}
+            />
+        </AutosaveProvider>
     )
 })
 
 const CanvasEditWrap = () => {
-    const { replaceCanvas, setCanvas } = useCanvasUpdater()
-    const { undo } = useContext(UndoContainer.Context)
     const canvas = useCanvas()
     if (!canvas) {
         return (
@@ -467,35 +553,79 @@ const CanvasEditWrap = () => {
     return (
         <SubscriptionStatus.Provider key={key}>
             <RunController.Provider canvas={canvas}>
-                <CanvasEdit
-                    replace={replaceCanvas}
-                    push={setCanvas}
-                    undo={undo}
-                    canvas={canvas}
-                />
+                <CameraProvider>
+                    <SidebarProvider>
+                        <CanvasEdit />
+                    </SidebarProvider>
+                </CameraProvider>
             </RunController.Provider>
         </SubscriptionStatus.Provider>
     )
 }
 
-function isDisabled({ state: canvas }) {
-    return !canvas || (canvas.state === RunStates.Running || canvas.adhoc)
+const CanvasErrorBoundary = ({ error }) => {
+    if (error instanceof ResourceNotFoundError) {
+        throw error
+    }
+
+    return (
+        <ErrorPageContent>
+            <Button
+                kind="special"
+                tag={Link}
+                to=""
+                onClick={(event) => {
+                    event.preventDefault()
+                    window.location.reload()
+                }}
+            >
+                Refresh
+            </Button>
+            <Button
+                kind="special"
+                tag={Link}
+                to={routes.canvases.index()}
+                className="d-none d-md-inline-flex"
+            >
+                Back to Canvases
+            </Button>
+        </ErrorPageContent>
+    )
 }
 
-const CanvasContainer = withRouter(withErrorBoundary(ErrorComponentView)((props) => (
-    <ClientProvider>
-        <UndoContainer key={props.match.params.id}>
-            <UndoControls disabled={isDisabled} />
-            <CanvasController.Provider>
-                <CanvasEditWrap />
-            </CanvasController.Provider>
-        </UndoContainer>
-    </ClientProvider>
+const CanvasContainer = withRouter(withErrorBoundary(CanvasErrorBoundary)((props) => (
+    <UndoContext.Provider key={props.match.params.id} enableBreadcrumbs>
+        <PendingProvider name="canvas">
+            <PendingLoadingIndicator />
+            <ClientProvider>
+                <CanvasController.Provider embed={!!props.embed}>
+                    <SelectionProvider>
+                        <CanvasEditWrap />
+                    </SelectionProvider>
+                </CanvasController.Provider>
+            </ClientProvider>
+        </PendingProvider>
+    </UndoContext.Provider>
 )))
 
-export default () => (
-    <Layout className={styles.layout} footer={false}>
-        <BodyClass className="editor" />
-        <CanvasContainer />
-    </Layout>
-)
+const theme = {
+    navShadow: true,
+}
+
+export default connect(selectAuthState)(({ embed, isAuthenticated }) => {
+    const { token } = useContext(SessionContext)
+    // if there's a token, user is probably just authenticating
+    // don't drop into embed mode unless no token
+    embed = embed || (!isAuthenticated && !token)
+    return (
+        <Layout
+            className={styles.layout}
+            footer={false}
+            nav={embed ? null : undefined}
+            theme={theme}
+        >
+            <BodyClass className="editor" />
+            <CanvasContainer embed={embed} />
+        </Layout>
+    )
+})

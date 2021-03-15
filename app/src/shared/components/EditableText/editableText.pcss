@@ -14,20 +14,28 @@
 .inner input {
   color: inherit;
   font: inherit;
-  line-height: 2em;
 }
 
 .inner input {
   background: none;
   border: 0;
+  height: 100%;
+  line-height: normal;
   outline: 0;
   padding: 0;
   position: absolute;
   width: 100%;
+
+  /* prevent input content jumping down 1px when entering edit mode */
+  margin-top: -1px;
 }
 
 .inner input::selection {
   background-color: #CCE9FD;
+}
+
+.inner input::placeholder {
+  overflow: visible;
 }
 
 .idle {
@@ -40,6 +48,7 @@
 
 .disabled {
   cursor: default;
+  pointer-events: none;
 }
 
 .spaceholder {
@@ -47,8 +56,36 @@
   overflow: hidden;
   visibility: hidden;
   white-space: pre;
+  padding-right: 0.05em; /* also balance extra width added by input when editing */
 }
 
 .blank {
   font-style: italic;
+}
+
+.idle.blank .inner {
+  /* ensures right-hand side of italic spaceholder text is not cut off */
+  padding-right: 0.25em; /* also balance extra width added by input when editing */
+}
+
+.root input.hiddenInput {
+  /* this must never get into layout flow so setting !important */
+  width: 0 !important;
+  height: 0 !important;
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.idle .spaceholder,
+.blank .spaceholder {
+  color: #CDCDCD;
+  overflow: auto;
+  visibility: visible;
+}
+
+.hidePlaceholderOnFocus.idle .spaceholder,
+.hidePlaceholderOnFocus.blank .spaceholder {
+  overflow: hidden;
+  visibility: hidden;
 }

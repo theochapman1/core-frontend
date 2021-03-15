@@ -7,12 +7,17 @@ import * as CanvasState from '../state'
 import { DragDropContext, Draggable } from './DragDropContext'
 import Dragger from './Ports/Dragger'
 import Plug from './Ports/Plug'
+import useModuleApi from './ModuleRenderer/useModuleApi'
 
 class DraggablePort extends React.Component {
     static contextType = DragDropContext
 
     componentWillUnmount() {
         this.unmounted = true
+    }
+
+    state = {
+        key: 0,
     }
 
     onDropPort = (event, stopData, reset) => {
@@ -27,12 +32,13 @@ class DraggablePort extends React.Component {
         }
 
         reset()
+        // scrub internal state after port drag
+        this.setState(({ key }) => ({ key: key + 1 }))
     }
 
     canConnectPorts(canvas) {
         const { data } = this.context
         const { sourceId, portId, overId } = data
-        if (portId === overId) { return false } // cannot re-connect to self
         const fromId = sourceId || portId // treat as if dragging sourceId
         return CanvasState.canConnectPorts(canvas, fromId, overId)
     }
@@ -42,7 +48,8 @@ class DraggablePort extends React.Component {
         const triggeredPorts = []
         const { data } = this.context
         const { sourceId, portId, overId } = data
-        this.props.api.setCanvas({ type: 'Connect Ports' }, (canvas) => {
+        if (overId === portId) { return } // do nothing, already connected
+        this.props.setCanvas({ type: 'Connect Ports' }, (canvas) => {
             if (!this.canConnectPorts(canvas)) { return null } // noop if incompatible
             let nextCanvas = canvas
             if (sourceId) {
@@ -102,7 +109,7 @@ class DraggablePort extends React.Component {
         const { sourceId, portId } = data
         if (!sourceId) { return } // not connected
         const triggeredPorts = []
-        this.props.api.setCanvas({ type: 'Disconnect Ports' }, (canvas) => {
+        this.props.setCanvas({ type: 'Disconnect Ports' }, (canvas) => {
             const disconnectedPort = CanvasState.getPort(canvas, portId)
             const nextCanvas = CanvasState.disconnectPorts(canvas, sourceId, portId)
 
@@ -136,12 +143,14 @@ class DraggablePort extends React.Component {
     render() {
         return (
             <Draggable
+                key={this.state.key}
                 defaultClassNameDragging={Plug.styles.isDragged}
                 handle={`.${Dragger.styles.dragHandle}`}
                 cancel={`.${Dragger.styles.dragCancel}`}
                 onStop={this.onDropPort}
                 onStart={this.onStartDragPort}
                 onDrag={this.onDragPort}
+                disabled={this.props.disabled}
             >
                 {this.props.children}
             </Draggable>
@@ -149,11 +158,15 @@ class DraggablePort extends React.Component {
     }
 }
 
-export function DragSource({ api, port, onValueChange, className }) {
+export function DragSource({ port, onValueChange, className, disabled }) {
+    const { setCanvas } = useModuleApi()
+
     return (
-        <DraggablePort api={api} port={port} onValueChange={onValueChange}>
+        <DraggablePort setCanvas={setCanvas} port={port} onValueChange={onValueChange} disabled={disabled}>
             <div
-                className={cx(Dragger.styles.root, Dragger.styles.source, Dragger.styles.dragHandle, className)}
+                className={cx(Dragger.styles.root, Dragger.styles.source, Dragger.styles.dragHandle, className, {
+                    [Dragger.styles.disabled]: disabled,
+                })}
             />
         </DraggablePort>
     )
@@ -188,7 +201,9 @@ export class DropTarget extends React.PureComponent {
             /* eslint-disable-next-line max-len */
             /* eslint-disable jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/mouse-events-have-key-events, jsx-a11y/no-noninteractive-tabindex */
             <div
-                className={cx(Dragger.styles.root, Dragger.styles.target, this.props.className, this.props.className)}
+                className={cx(Dragger.styles.root, Dragger.styles.target, this.props.className, this.props.className, {
+                    [Dragger.styles.disabled]: this.props.disabled,
+                })}
                 onMouseOver={this.onMouseOverTarget}
                 onMouseOut={this.onMouseOutTarget}
             />

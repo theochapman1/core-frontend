@@ -1,180 +1,152 @@
 // @flow
 
-import React, { type Node } from 'react'
-import { connect } from 'react-redux'
+import { type Node, useCallback, useEffect, useRef } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 
-import getWeb3 from '$shared/web3/web3Provider'
-import { selectAccountId } from '$mp/modules/web3/selectors'
-import { selectDataPerUsd, selectIsWeb3Injected } from '$mp/modules/global/selectors'
-import { receiveAccount, changeAccount, accountError, updateEthereumNetworkId } from '$mp/modules/web3/actions'
-import type { StoreState } from '$shared/flowtype/store-state'
-import type { Address, Hash, Receipt } from '$shared/flowtype/web3-types'
-import type { StreamrWeb3 as StreamrWeb3Type } from '$shared/web3/web3Provider'
-import type { ErrorInUi, TransactionType, NumberString } from '$shared/flowtype/common-types'
+import type { Hash, Receipt } from '$shared/flowtype/web3-types'
 import { getUserData } from '$shared/modules/user/actions'
+import { getDataPerUsd } from '$mp/modules/global/actions'
 import {
-    getDataPerUsd as getDataPerUsdAction,
-    checkWeb3 as checkWeb3Action,
-} from '$mp/modules/global/actions'
-import { areAddressesEqual } from '$mp/utils/smartContract'
-import {
-    addTransaction as addTransactionAction,
-    completeTransaction as completeTransactionAction,
-    transactionError as transactionErrorAction,
+    addTransaction,
+    completeTransaction,
+    transactionError,
 } from '$mp/modules/transactions/actions'
 import { getTransactionsFromSessionStorage } from '$shared/utils/transactions'
 import TransactionError from '$shared/errors/TransactionError'
 import Web3Poller from '$shared/web3/web3Poller'
+import { useBalances } from '$shared/hooks/useBalances'
+import { selectUserData } from '$shared/modules/user/selectors'
+import type { NumberString } from '$shared/flowtype/common-types'
+import useEthereumIdentities from '$shared/modules/integrationKey/hooks/useEthereumIdentities'
 
-type OwnProps = {
+type Props = {
     children?: Node,
 }
 
-type StateProps = {
-    account: any,
-}
-
-type DispatchProps = {
-    receiveAccount: (Address) => void,
-    changeAccount: (Address) => void,
-    accountError: (error: ErrorInUi) => void,
-    getUserData: () => void,
-    getDataPerUsd: () => void,
-    updateEthereumNetworkId: (id: any) => void,
-    checkWeb3: (?boolean) => void,
-    addTransaction: (Hash, TransactionType) => void,
-    completeTransaction: (Hash, Receipt) => void,
-    transactionError: (Hash, TransactionError) => void,
-}
-
-type Props = OwnProps & StateProps & DispatchProps
-
 const LOGIN_POLL_INTERVAL = 1000 * 60 * 5 // 5min
+const ACCOUNT_BALANCE_POLL_INTERVAL = 1000 * 60 * 5 // 5min
 const USD_RATE_POLL_INTERVAL = 1000 * 60 * 60 * 6 // 6h
 const PENDING_TX_WAIT = 1000 // 1s
 
-export class GlobalInfoWatcher extends React.Component<Props> {
-    componentDidMount = () => {
-        this.initWeb3()
+export const GlobalInfoWatcher = ({ children }: Props) => {
+    const dispatch = useDispatch()
 
-        // Start polling for info
-        this.pollDataPerUsdRate()
-        this.pollLogin()
-        this.addPendingTransactions()
+    // Poll usd rate from contract
+    const dataPerUsdRatePollTimeout = useRef()
+    const dataPerUsdRatePoll = useCallback(() => {
+        clearTimeout(dataPerUsdRatePollTimeout.current)
+        dispatch(getDataPerUsd())
 
-        Web3Poller.subscribe(Web3Poller.events.ACCOUNT_ERROR, this.handleAccountError)
-        Web3Poller.subscribe(Web3Poller.events.ACCOUNT, this.handleAccount)
-        Web3Poller.subscribe(Web3Poller.events.NETWORK, this.handleNetwork)
-        Web3Poller.subscribe(Web3Poller.events.TRANSACTION_COMPLETE, this.handleTransactionComplete)
-        Web3Poller.subscribe(Web3Poller.events.TRANSACTION_ERROR, this.handleTransactionError)
-    }
+        dataPerUsdRatePollTimeout.current = setTimeout(dataPerUsdRatePoll, USD_RATE_POLL_INTERVAL)
+    }, [dispatch])
 
-    componentWillUnmount = () => {
-        Web3Poller.unsubscribe(Web3Poller.events.ACCOUNT_ERROR, this.handleAccountError)
-        Web3Poller.unsubscribe(Web3Poller.events.ACCOUNT, this.handleAccount)
-        Web3Poller.unsubscribe(Web3Poller.events.NETWORK, this.handleNetwork)
-        Web3Poller.unsubscribe(Web3Poller.events.TRANSACTION_COMPLETE, this.handleTransactionComplete)
-        Web3Poller.unsubscribe(Web3Poller.events.TRANSACTION_ERROR, this.handleTransactionError)
-        this.clearDataPerUsdRatePoll()
-        this.clearLoginPoll()
-    }
+    useEffect(() => {
+        dataPerUsdRatePoll()
 
-    loginPollTimeout: ?TimeoutID = null
-    dataPerUsdRatePollTimeout: ?TimeoutID = null
-    web3: StreamrWeb3Type = getWeb3()
-
-    initWeb3 = () => {
-        this.web3 = getWeb3()
-        this.props.checkWeb3()
-    }
-
-    pollLogin = () => {
-        this.props.getUserData()
-        this.clearLoginPoll()
-        this.loginPollTimeout = setTimeout(this.pollLogin, LOGIN_POLL_INTERVAL)
-    }
-
-    pollDataPerUsdRate = () => {
-        this.props.getDataPerUsd()
-        this.clearDataPerUsdRatePoll()
-        this.dataPerUsdRatePollTimeout = setTimeout(this.pollDataPerUsdRate, USD_RATE_POLL_INTERVAL)
-    }
-
-    clearLoginPoll = () => {
-        if (this.loginPollTimeout) {
-            clearTimeout(this.loginPollTimeout)
-            this.loginPollTimeout = null
+        return () => {
+            clearTimeout(dataPerUsdRatePollTimeout.current)
         }
-    }
+    }, [dataPerUsdRatePoll])
 
-    clearDataPerUsdRatePoll = () => {
-        if (this.dataPerUsdRatePollTimeout) {
-            clearTimeout(this.dataPerUsdRatePollTimeout)
-            this.dataPerUsdRatePollTimeout = null
+    // Poll login info
+    const loginPollTimeout = useRef()
+    const loginPoll = useCallback(() => {
+        clearTimeout(loginPollTimeout.current)
+        dispatch(getUserData())
+
+        loginPollTimeout.current = setTimeout(loginPoll, LOGIN_POLL_INTERVAL)
+    }, [dispatch])
+
+    useEffect(() => {
+        loginPoll()
+
+        return () => {
+            clearTimeout(loginPollTimeout.current)
         }
-    }
+    }, [loginPoll])
 
-    addPendingTransactions = () => {
-        setTimeout(() => {
+    // Poll transactions
+    useEffect(() => {
+        const transactionsTimeout = setTimeout(() => {
             const pendingTransactions = getTransactionsFromSessionStorage()
             Object.keys(pendingTransactions)
                 .forEach((txHash) => {
-                    this.props.addTransaction(txHash, pendingTransactions[txHash])
+                    dispatch(addTransaction(txHash, pendingTransactions[txHash]))
                 })
         }, PENDING_TX_WAIT)
-    }
 
-    handleAccountError = (error: ErrorInUi) => {
-        this.props.accountError(error)
-    }
-
-    handleAccount = (account: string) => {
-        const next = account
-        const curr = this.props.account
-
-        const didChange = curr && next && !areAddressesEqual(curr, next)
-        const didDefine = !curr && next
-        if (didDefine) {
-            this.props.receiveAccount(next)
-        } else if (didChange) {
-            this.props.changeAccount(next)
+        return () => {
+            clearTimeout(transactionsTimeout)
         }
-    }
+    }, [dispatch])
 
-    handleNetwork = (network: NumberString) => {
-        this.props.updateEthereumNetworkId(network)
-    }
+    const handleTransactionComplete = useCallback((id: Hash, receipt: Receipt) => {
+        dispatch(completeTransaction(id, receipt))
+    }, [dispatch])
 
-    handleTransactionComplete = (id: Hash, receipt: Receipt) => {
-        this.props.completeTransaction(id, receipt)
-    }
+    const handleTransactionError = useCallback((id: Hash, error: TransactionError) => {
+        dispatch(transactionError(id, error))
+    }, [dispatch])
 
-    handleTransactionError = (id: Hash, error: TransactionError) => {
-        this.props.transactionError(id, error)
-    }
+    useEffect(() => {
+        Web3Poller.subscribe(Web3Poller.events.TRANSACTION_COMPLETE, handleTransactionComplete)
+        Web3Poller.subscribe(Web3Poller.events.TRANSACTION_ERROR, handleTransactionError)
 
-    render() {
-        return this.props.children || null
-    }
+        return () => {
+            Web3Poller.unsubscribe(Web3Poller.events.TRANSACTION_COMPLETE, handleTransactionComplete)
+            Web3Poller.unsubscribe(Web3Poller.events.TRANSACTION_ERROR, handleTransactionError)
+        }
+    }, [handleTransactionComplete, handleTransactionError])
+
+    // Fetch integrations keys and poll balances
+    const { load: loadIntegrationKeys } = useEthereumIdentities()
+    const { update: updateBalances } = useBalances()
+    const balanceTimeout = useRef()
+    const balancePoll = useCallback(() => {
+        clearTimeout(balanceTimeout.current)
+        updateBalances()
+
+        balanceTimeout.current = setTimeout(balancePoll, ACCOUNT_BALANCE_POLL_INTERVAL)
+    }, [updateBalances])
+    const user = useSelector(selectUserData)
+    const { username } = user || {}
+
+    useEffect(() => {
+        if (!username) { return () => {} }
+
+        // fetch the integration keys first and then start polling for the balance
+        loadIntegrationKeys()
+            .then(() => {
+                balancePoll()
+            })
+
+        return () => {
+            clearTimeout(balanceTimeout.current)
+        }
+    }, [loadIntegrationKeys, balancePoll, username])
+
+    // Poll network
+    useEffect(() => {
+        let currentNetworkId
+
+        const onNetworkChange = (networkId: NumberString) => {
+            if (currentNetworkId && networkId && currentNetworkId !== networkId) {
+                window.location.reload()
+            }
+
+            currentNetworkId = networkId
+        }
+
+        Web3Poller.subscribe(Web3Poller.events.NETWORK, onNetworkChange)
+        Web3Poller.subscribe(Web3Poller.events.NETWORK_ERROR, onNetworkChange)
+
+        return () => {
+            Web3Poller.unsubscribe(Web3Poller.events.NETWORK, onNetworkChange)
+            Web3Poller.unsubscribe(Web3Poller.events.NETWORK_ERROR, onNetworkChange)
+        }
+    }, [])
+
+    return children || null
 }
 
-export const mapStateToProps = (state: StoreState): StateProps => ({
-    account: selectAccountId(state),
-    dataPerUsd: selectDataPerUsd(state),
-    isWeb3Injected: selectIsWeb3Injected(state),
-})
-
-export const mapDispatchToProps = (dispatch: Function): DispatchProps => ({
-    receiveAccount: (id: Address) => dispatch(receiveAccount(id)),
-    changeAccount: (id: Address) => dispatch(changeAccount(id)),
-    accountError: (error: ErrorInUi) => dispatch(accountError(error)),
-    getUserData: () => dispatch(getUserData()),
-    getDataPerUsd: () => dispatch(getDataPerUsdAction()),
-    updateEthereumNetworkId: (id: any) => dispatch(updateEthereumNetworkId(id)),
-    checkWeb3: () => dispatch(checkWeb3Action()),
-    addTransaction: (id: Hash, type: TransactionType) => dispatch(addTransactionAction(id, type)),
-    completeTransaction: (id: Hash, receipt: Receipt) => dispatch(completeTransactionAction(id, receipt)),
-    transactionError: (id: Hash, error: TransactionError) => dispatch(transactionErrorAction(id, error)),
-})
-
-export default connect(mapStateToProps, mapDispatchToProps)(GlobalInfoWatcher)
+export default GlobalInfoWatcher

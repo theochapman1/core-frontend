@@ -1,14 +1,16 @@
 // @flow
 
-import React, { useCallback, useState, useEffect, useContext, useMemo } from 'react'
+import React, { useCallback, useState, useEffect, useContext, useMemo, type ComponentType } from 'react'
 import cx from 'classnames'
 import startCase from 'lodash/startCase'
+import useModule from '$editor/canvas/components/ModuleRenderer/useModule'
 import EditableText from '$shared/components/EditableText'
 import useGlobalEventWithin from '$shared/hooks/useGlobalEventWithin'
 import useKeyDown from '$shared/hooks/useKeyDown'
 
-import { isPortInvisible } from '../../../state'
+import { isPortInvisible, isPortRenameDisabled } from '../../../state'
 import { DragDropContext } from '../../DragDropContext'
+import { useCameraState, noCameraControl } from '../../Camera'
 import Option from '../Option'
 import Plug from '../Plug'
 import Menu from '../Menu'
@@ -17,8 +19,6 @@ import Cell from './Cell'
 import styles from './port.pcss'
 
 type Props = {
-    api: any,
-    canvas: any,
     onPort: any,
     onValueChange: (any, any, any) => void,
     onSizeChange: () => void,
@@ -26,39 +26,50 @@ type Props = {
     setOptions: any,
 }
 
+const EMPTY = {}
+
 const Port = ({
-    api,
-    canvas,
     onPort,
     onSizeChange,
     onValueChange: onValueChangeProp,
     port,
     setOptions,
 }: Props) => {
-    const isRunning = canvas.state === 'RUNNING'
+    const { isDragging, data } = useContext(DragDropContext)
+    const { portId } = data || EMPTY
+    const dragInProgress = !!isDragging && portId != null
+    const { isCanvasEditable, canvas } = useModule()
+    const isContentEditable = !dragInProgress && isCanvasEditable
     const isInput = !!port.acceptedTypes
     const isParam = 'defaultValue' in port
-    const hasInputField = isParam || port.canHaveInitialValue
+    const hasInputField = !!(isParam || port.canHaveInitialValue)
     const [contextMenuTarget, setContextMenuTarget] = useState(null)
     const [editingName, setEditingName] = useState(false)
 
     const onContextMenu = useCallback((e: SyntheticMouseEvent<EventTarget>) => {
         e.preventDefault()
-        // $FlowFixMe wtf?
-        setContextMenuTarget(e.currentTarget)
+        setContextMenuTarget((e.currentTarget: any))
     }, [setContextMenuTarget])
 
     const dismiss = useCallback(() => {
         setContextMenuTarget(null)
     }, [])
 
-    useGlobalEventWithin('mousedown', useMemo(() => ({
+    // close menu on click/wheel/focus outside
+    useGlobalEventWithin('mousedown mousewheel focus', useMemo(() => ({
         current: contextMenuTarget,
     }), [contextMenuTarget]), useCallback((within: boolean) => {
         if (!within) {
             dismiss()
         }
-    }, [dismiss]), Menu.styles.noAutoDismiss)
+    }, [dismiss]), Menu.styles.noAutoDismiss, true)
+
+    const { scale, x, y } = useCameraState()
+
+    // close menu on camera change
+    useEffect(() => {
+        dismiss()
+    }, [dismiss, scale, x, y])
 
     useKeyDown(useMemo(() => ({
         Escape: () => {
@@ -93,21 +104,6 @@ const Port = ({
         onSizeChange()
     }, [port.id, onValueChangeProp, onSizeChange])
 
-    const { isDragging, data } = useContext(DragDropContext)
-    const { portId } = data || {}
-    const dragInProgress = !!isDragging && portId != null
-
-    const plug = (
-        <Plug
-            api={api}
-            canvas={canvas}
-            onContextMenu={onContextMenu}
-            onValueChange={onValueChangeProp}
-            port={port}
-            register={onPort}
-        />
-    )
-
     useEffect(() => {
         window.addEventListener('blur', onWindowBlur)
 
@@ -120,30 +116,40 @@ const Port = ({
         onSizeChange()
     }, [port.value, onSizeChange])
 
+    const plug = (
+        <Plug
+            onContextMenu={onContextMenu}
+            onValueChange={onValueChangeProp}
+            port={port}
+            register={onPort}
+            disabled={!isCanvasEditable}
+        />
+    )
+
     const isInvisible = isPortInvisible(canvas, port.id)
+
+    const isRenameDisabled = !isContentEditable || isPortRenameDisabled(canvas, port.id)
 
     return (
         <div
             className={cx(styles.root, {
-                [styles.dragInProgress]: !!dragInProgress,
                 [styles.dragInProgress]: !!dragInProgress,
                 [styles.isInvisible]: isInvisible,
             })}
         >
             {!!contextMenuTarget && (
                 <Menu
-                    api={api}
                     dismiss={dismiss}
                     port={port}
                     setPortOptions={setOptions}
                     target={contextMenuTarget}
                 />
             )}
-            {!!port.canToggleDrivingInput && (
+            {!dragInProgress && !!port.canToggleDrivingInput && (
                 <Option
                     activated={!!port.drivingInput}
                     className={styles.portOption}
-                    disabled={!!isRunning}
+                    disabled={!isContentEditable}
                     name="drivingInput"
                     onToggle={onOptionToggle}
                 />
@@ -153,7 +159,8 @@ const Port = ({
             ) : plug}
             <Cell>
                 <EditableText
-                    disabled={!!isRunning}
+                    className={styles.name}
+                    disabled={!!isRenameDisabled}
                     editing={editingName}
                     onCommit={onNameChange}
                     setEditing={setEditingName}
@@ -164,18 +171,19 @@ const Port = ({
             {!!hasInputField && (
                 <Cell>
                     <Value
-                        canvas={canvas}
+                        className={noCameraControl}
                         port={port}
                         onChange={onValueChange}
+                        disabled={!isContentEditable}
                     />
                 </Cell>
             )}
             {!isInput && plug}
-            {!!port.canBeNoRepeat && (
+            {!dragInProgress && !!port.canBeNoRepeat && (
                 <Option
                     activated={!!port.noRepeat}
                     className={styles.portOption}
-                    disabled={!!isRunning}
+                    disabled={!isContentEditable}
                     name="noRepeat"
                     onToggle={onOptionToggle}
                 />
@@ -184,6 +192,4 @@ const Port = ({
     )
 }
 
-Port.styles = styles
-
-export default Port
+export default (React.memo(Port): ComponentType<Props>)

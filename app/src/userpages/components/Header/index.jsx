@@ -3,17 +3,15 @@
 import React, { type Node } from 'react'
 import { connect } from 'react-redux'
 import cx from 'classnames'
-import { Container } from 'reactstrap'
-import { Translate } from 'react-redux-i18n'
 
 import type { User } from '$shared/flowtype/user-types'
 import type { StoreState } from '$shared/flowtype/store-state'
 import { selectUserData } from '$shared/modules/user/selectors'
-import { userpages } from '../../../links'
-import Tab from './Tab'
-import { formatPath } from '$shared/utils/url'
 import Avatar from '$userpages/components/Avatar'
-
+import ListContainer from '$shared/components/Container/List'
+import routes from '$routes'
+import Tab from './Tab'
+import AccountsBalance from './AccountsBalance'
 import styles from './header.pcss'
 
 type OwnProps = {
@@ -38,14 +36,16 @@ const Header = ({
     user,
     noHeader,
 }: Props) => (
-    <Container className={cx(className, styles.containerOverrides)}>
+    <ListContainer className={cx(styles.listTemp, className)}>
         {!noHeader && user &&
             <div className={styles.profile}>
                 <Avatar
                     className={styles.avatar}
                     user={user}
                     linkToProfile
-                />
+                >
+                    <AccountsBalance />
+                </Avatar>
                 <div className={styles.additionalComponent}>
                     {additionalComponent}
                 </div>
@@ -58,23 +58,23 @@ const Header = ({
                         {searchComponent}
                     </div>
                     <div className={styles.tabs}>
-                        <Tab to={formatPath(userpages.streams)}>
-                            <Translate value="userpages.header.streams" />
+                        <Tab to={routes.streams.index()}>
+                            Streams
                         </Tab>
-                        <Tab to={formatPath(userpages.canvases)}>
-                            <Translate value="userpages.header.canvases" />
+                        <Tab to={routes.canvases.index()}>
+                            Canvases
                         </Tab>
-                        <Tab to={formatPath(userpages.dashboards)}>
-                            <Translate value="userpages.header.dashboards" />
+                        <Tab to={routes.dashboards.index()}>
+                            Dashboards
                         </Tab>
-                        <Tab to={formatPath(userpages.products)}>
-                            <Translate value="userpages.header.products" />
+                        <Tab to={routes.products.index()}>
+                            Products
                         </Tab>
-                        <Tab to={formatPath(userpages.purchases)}>
-                            <Translate value="userpages.header.purchases" />
+                        <Tab to={routes.subscriptions()}>
+                            Subscriptions
                         </Tab>
-                        <Tab to={formatPath(userpages.transactions)}>
-                            <Translate value="userpages.header.transactions" />
+                        <Tab to={routes.transactions()}>
+                            Transactions
                         </Tab>
                     </div>
                 </div>
@@ -83,7 +83,7 @@ const Header = ({
                 </div>
             </div>
         )}
-    </Container>
+    </ListContainer>
 )
 
 Header.defaultProps = {

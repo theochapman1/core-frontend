@@ -8,7 +8,9 @@ import TextControl from '../TextControl'
 import styles from './editableText.pcss'
 
 type Props = {
+    id?: string,
     autoFocus?: boolean,
+    title?: string,
     children?: string | number,
     className?: ?string,
     disabled?: boolean,
@@ -16,11 +18,19 @@ type Props = {
     editOnFocus?: boolean,
     selectAllOnFocus?: boolean,
     onChange?: (string) => void,
+    blankClassName?: string,
     onCommit?: (string) => void,
     onModeChange?: ?(boolean) => void,
     placeholder?: ?string,
     probe?: Node,
     setEditing: (boolean) => void,
+    hidePlaceholderOnFocus?: boolean,
+    immediateCommit?: boolean,
+    theme?: Object,
+}
+
+function isBlank(str) {
+    return str == null || str === ''
 }
 
 const EditableText = ({
@@ -32,14 +42,19 @@ const EditableText = ({
     editOnFocus,
     selectAllOnFocus,
     onChange: onChangeProp,
+    blankClassName,
     onCommit,
     onModeChange,
     placeholder,
     probe,
     setEditing,
+    title,
+    hidePlaceholderOnFocus,
+    immediateCommit,
+    theme,
     ...props
 }: Props) => {
-    const children = childrenProp == null ? EditableText.defaultProps.children : childrenProp
+    const children = (childrenProp == null) ? EditableText.defaultProps.children : childrenProp
     const [value, setValue] = useState(children)
     const [hasFocus, setHasFocus] = useState(false)
     const startEditing = useCallback(() => {
@@ -81,14 +96,19 @@ const EditableText = ({
         }
     }, [])
 
+    const renderValue = useCallback((val) => (
+        !isBlank(val) ? val : (placeholder || '')
+    ), [placeholder])
+    const valueIsBlank = isBlank(editing ? value : children)
     return (
         <div
             className={cx(styles.root, className, {
                 [styles.idle]: !editing,
                 [styles.disabled]: disabled,
-                [styles.blank]: (editing && !value) || (!editing && !children),
+                [styles.blank]: valueIsBlank,
                 [ModuleStyles.dragCancel]: !!editing,
-            })}
+                [styles.hidePlaceholderOnFocus]: hidePlaceholderOnFocus,
+            }, valueIsBlank ? blankClassName : undefined)}
             onDoubleClick={startEditing}
             {...((editOnFocus && !disabled) ? {
                 onFocus: startEditing,
@@ -96,6 +116,7 @@ const EditableText = ({
                 // we can't let the span be focusable when the input is.
                 tabIndex: (hasFocus ? -1 : 0),
             } : {})}
+            title={title}
         >
             <span className={styles.inner}>
                 {probe}
@@ -103,6 +124,7 @@ const EditableText = ({
                     <Fragment>
                         <TextControl
                             {...props}
+                            immediateCommit={immediateCommit}
                             autoComplete="off"
                             autoFocus
                             flushHistoryOnBlur
@@ -117,10 +139,23 @@ const EditableText = ({
                             value={children}
                         />
                         <span className={styles.spaceholder}>
-                            {value || placeholder || ''}
+                            {renderValue(value)}
                         </span>
                     </Fragment>
-                ) : (children || placeholder)}
+                ) : (
+                    <React.Fragment>
+                        {renderValue(children)}
+                        {/* fake input to capture focus from label click */}
+                        <input
+                            className={styles.hiddenInput}
+                            id={props.id}
+                            onFocus={onFocus}
+                            placeholder={placeholder}
+                            disabled={disabled}
+                            tabIndex="-1"
+                        />
+                    </React.Fragment>
+                )}
             </span>
         </div>
     )

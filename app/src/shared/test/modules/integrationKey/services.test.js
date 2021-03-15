@@ -4,9 +4,11 @@ import sinon from 'sinon'
 
 import * as services from '$shared/modules/integrationKey/services'
 import * as getWeb3 from '$shared/web3/web3Provider'
+import * as utils from '$mp/utils/web3'
+import { BalanceType } from '$shared/flowtype/integration-key-types'
 
 import { integrationKeyServices } from '$shared/utils/constants'
-import { Web3NotEnabledError } from '$shared/errors/Web3'
+import { ChallengeFailedError } from '$shared/errors/Web3'
 
 describe('integrationKey - services', () => {
     let sandbox
@@ -62,15 +64,28 @@ describe('integrationKey - services', () => {
     describe('createPrivateKey', () => {
         it('sends a POST request to create a new integration key', async () => {
             const name = 'My private key'
-            const privateKey = '0x876EabF441B2EE5B5b0554Fd502a8E0600950cFa'
+            const account = {
+                address: '0x1234',
+                privateKey: '1234567890abcdefgh',
+            }
             const data = {
                 id: '1',
                 name,
                 service: integrationKeyServices.PRIVATE_KEY,
                 json: {
-                    address: privateKey,
+                    address: account.address,
                 },
             }
+
+            const createStub = sandbox.stub().callsFake(() => account)
+            const publicWeb3Stub = {
+                eth: {
+                    accounts: {
+                        create: createStub,
+                    },
+                },
+            }
+            sandbox.stub(getWeb3, 'getPublicWeb3').callsFake(() => publicWeb3Stub)
 
             moxios.wait(() => {
                 const request = moxios.requests.mostRecent()
@@ -86,13 +101,14 @@ describe('integrationKey - services', () => {
                     name,
                     service: integrationKeyServices.PRIVATE_KEY,
                     json: {
-                        privateKey,
+                        privateKey: account.privateKey,
                     },
                 }))
             })
 
-            const result = await services.createPrivateKey(name, privateKey)
+            const result = await services.createPrivateKey(name)
             assert.deepStrictEqual(result, data)
+            assert(createStub.calledOnce)
         })
     })
 
@@ -166,31 +182,78 @@ describe('integrationKey - services', () => {
     })
 
     describe('createIdentity', () => {
-        it('throws an error if web is not enabled', async () => {
-            const web3Stub = sandbox.stub(getWeb3, 'default').callsFake(() => ({
-                isEnabled: () => false,
-            }))
+        it('throws an error if getting challege fails', async () => {
+            const address = '0x876EabF441B2EE5B5b0554Fd502a8E0600950cFa'
+            const signature = 'signature'
+            moxios.stubRequest(`/login/challenge/${address}`, {
+                status: 401,
+            })
+
+            const signChallenge = sandbox.stub().callsFake(() => Promise.resolve(signature))
 
             try {
-                await services.createIdentity('test')
+                await services.createIdentity({
+                    name: 'test',
+                    address,
+                    signChallenge,
+                })
             } catch (e) {
-                assert(web3Stub.calledOnce)
-                assert(e instanceof Web3NotEnabledError)
+                assert.equal(e instanceof ChallengeFailedError, true)
+            }
+        })
+
+        it('throws an error if sign method is undefined', async () => {
+            const address = '0x876EabF441B2EE5B5b0554Fd502a8E0600950cFa'
+            const challenge = {
+                expires: '2018-12-11T09:55:26Z',
+                challenge: 'This is a challenge created by Streamr',
+                id: '0fWncFCPW4CAeeBYKGAdUuHY8yN0Ty',
+            }
+            moxios.stubRequest(`/login/challenge/${address}`, {
+                status: 200,
+                response: challenge,
+            })
+
+            try {
+                await services.createIdentity({
+                    name: 'test',
+                    address,
+                })
+            } catch (e) {
+                assert.equal(e instanceof ChallengeFailedError, true)
+            }
+        })
+
+        it('throws an error if sign method fails', async () => {
+            const address = '0x876EabF441B2EE5B5b0554Fd502a8E0600950cFa'
+            const challenge = {
+                expires: '2018-12-11T09:55:26Z',
+                challenge: 'This is a challenge created by Streamr',
+                id: '0fWncFCPW4CAeeBYKGAdUuHY8yN0Ty',
+            }
+            moxios.stubRequest(`/login/challenge/${address}`, {
+                status: 200,
+                response: challenge,
+            })
+            const signChallenge = () => {
+                throw new Error('something went wrong')
+            }
+
+            try {
+                await services.createIdentity({
+                    name: 'test',
+                    address,
+                    signChallenge,
+                })
+            } catch (e) {
+                assert.equal(e instanceof ChallengeFailedError, true)
             }
         })
 
         it('sends a POST request with the signed challenge', async () => {
-            const account = '0x876EabF441B2EE5B5b0554Fd502a8E0600950cFa'
+            const address = '0x876EabF441B2EE5B5b0554Fd502a8E0600950cFa'
             const signature = 'signature'
-            sandbox.stub(getWeb3, 'default').callsFake(() => ({
-                isEnabled: () => true,
-                getDefaultAccount: () => Promise.resolve(account),
-                eth: {
-                    personal: {
-                        sign: () => Promise.resolve(signature),
-                    },
-                },
-            }))
+            const signChallenge = sandbox.stub().callsFake(() => Promise.resolve(signature))
             const challenge = {
                 expires: '2018-12-11T09:55:26Z',
                 challenge: 'This is a challenge created by Streamr',
@@ -202,10 +265,10 @@ describe('integrationKey - services', () => {
                 name,
                 service: integrationKeyServices.ETHEREREUM_IDENTITY,
                 json: {
-                    address: account,
+                    address,
                 },
             }
-            moxios.stubRequest(`/login/challenge/${account}`, {
+            moxios.stubRequest(`/login/challenge/${address}`, {
                 status: 200,
                 response: challenge,
             })
@@ -215,8 +278,13 @@ describe('integrationKey - services', () => {
                 response: data,
             })
 
-            const result = await services.createIdentity('test')
+            const result = await services.createIdentity({
+                name: 'test',
+                address,
+                signChallenge,
+            })
             assert.deepStrictEqual(result, data)
+            assert.equal(signChallenge.calledWith(challenge.challenge), true)
         })
     })
 
@@ -236,6 +304,45 @@ describe('integrationKey - services', () => {
 
             const result = await services.deleteIntegrationKey(id)
             assert.deepStrictEqual(result, null)
+        })
+    })
+
+    describe('getBalance', () => {
+        it('gets ETH balance', async () => {
+            sandbox.stub(utils, 'getEthBalance').callsFake(() => '123')
+
+            const balance = await services.getBalance({
+                address: 'testAccount',
+                type: BalanceType.ETH,
+            })
+
+            expect(balance).toBe('123')
+        })
+
+        it('gets token balance', async () => {
+            sandbox.stub(utils, 'getDataTokenBalance').callsFake(() => '123')
+
+            const balance = await services.getBalance({
+                address: 'testAccount',
+                type: BalanceType.DATA,
+            })
+            expect(balance).toBe('123')
+        })
+
+        it('throws an error if type is unknown', async () => {
+            let balance
+            let error
+            try {
+                balance = await services.getBalance({
+                    adress: 'testAccount',
+                    type: 'someToken',
+                })
+            } catch (e) {
+                error = e
+            }
+
+            expect(error).toBeDefined()
+            expect(balance).not.toBeDefined()
         })
     })
 })

@@ -1,4 +1,3 @@
-import expect from 'expect'
 import reducer from '../../../modules/canvas/reducer'
 import * as actions from '../../../modules/canvas/actions'
 
@@ -6,10 +5,8 @@ describe('Canvas reducer', () => {
     it('should return the initial state', () => {
         expect(reducer(undefined, {})).toEqual({
             ids: [],
-            openCanvasId: null,
             error: null,
             fetching: false,
-            filter: null,
         })
     })
 
@@ -38,15 +35,6 @@ describe('Canvas reducer', () => {
             fetching: false,
             list: ['test'],
             error: new Error('test-error'),
-        })
-    })
-
-    it('should handle OPEN_CANVAS', () => {
-        expect(reducer({}, {
-            type: actions.OPEN_CANVAS,
-            id: 1,
-        })).toEqual({
-            openCanvasId: 1,
         })
     })
 })

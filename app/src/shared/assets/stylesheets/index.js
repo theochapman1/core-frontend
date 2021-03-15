@@ -1,6 +1,5 @@
 import '$shared/assets/stylesheets/bootstrap.scss'
 import '@streamr/streamr-icons/styles.css'
-import './fonts/ibm-plex.css'
 import './variables.css'
 
 import './buttons.pcss'
@@ -8,4 +7,5 @@ import './forms.pcss'
 import './navs.pcss'
 import './noScroll.pcss'
 import './layout.pcss'
+import './links.css'
 import './common.pcss'

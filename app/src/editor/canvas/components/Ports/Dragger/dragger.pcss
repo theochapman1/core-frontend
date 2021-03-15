@@ -3,12 +3,15 @@
   height: 100%;
   left: 0;
   opacity: 0;
-  pointer-events: all;
   position: absolute;
   top: 0;
   transform-origin: center center;
   width: 100%;
   z-index: 1;
+}
+
+.root.disabled {
+  cursor: initial;
 }
 
 .source::after {
@@ -22,6 +25,7 @@
   top: 50%;
   transform: translate(-50%, -50%);
   width: calc(0.5 * var(--um));
+  z-index: 3;
 }
 
 .target {

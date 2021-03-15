@@ -6,11 +6,13 @@ import { handleEntities } from '$shared/utils/entities'
 import { transactionsSchema, contractProductSchema } from '$shared/modules/entities/schema'
 import type { StoreState } from '$shared/flowtype/store-state'
 import { selectEthereumIdentities } from '$shared/modules/integrationKey/selectors'
-import * as services from './services'
 import { selectEntities } from '$shared/modules/entities/selectors'
-import { selectTransactionEvents, selectOffset } from './selectors'
 import type { ProductIdList } from '$mp/flowtype/product-types'
 import { getProductFromContract } from '$mp/modules/contractProduct/services'
+import { selectMyProductList } from '$mp/modules/myProductList/selectors'
+import { getValidId } from '$mp/utils/product'
+import { selectTransactionEvents, selectOffset } from './selectors'
+import * as services from './services'
 
 export const GET_TRANSACTION_EVENTS_REQUEST = 'GET_TRANSACTION_EVENTS_REQUEST'
 export const GET_TRANSACTION_EVENTS_SUCCESS = 'GET_TRANSACTION_EVENTS_SUCCESS'
@@ -68,10 +70,6 @@ export const clearTransactionList = () => ({
     type: CLEAR_TRANSACTION_LIST,
 })
 
-export const noTransactionResults = () => (dispatch: Function) => {
-    dispatch(getTransactionsSuccess([]))
-}
-
 export const showEvents = () => (dispatch: Function, getState: () => StoreState) => {
     dispatch(getTransactionsRequest())
 
@@ -90,12 +88,9 @@ export const showEvents = () => (dispatch: Function, getState: () => StoreState)
                     entities.contractProducts &&
                     entities.contractProducts[transaction.productId]
                 ))
-                .reduce(
-                    (result, transaction: TransactionEntity) =>
-                        // $FlowFixMe
-                        (result.includes(transaction.productId) ? result : [...result, transaction.productId]),
-                    [],
-                )
+                .reduce((result, transaction: TransactionEntity) => (
+                    result.includes(transaction.productId) ? result : [...result, (transaction.productId || '')]
+                ), [])
 
             dispatch(fetchProducts(productsToFetch))
             return data
@@ -110,11 +105,22 @@ export const showEvents = () => (dispatch: Function, getState: () => StoreState)
 }
 
 export const getTransactionEvents = () => (dispatch: Function, getState: () => StoreState) => {
+    const state = getState()
+    const web3Accounts = selectEthereumIdentities(state)
+
+    if (!web3Accounts || !web3Accounts.length) {
+        return dispatch(getTransactionsSuccess([]))
+    }
+
+    const addresses = (web3Accounts || []).map(({ json: { address } }) => (address || '').toLowerCase())
+    const addressSet = new Set(addresses)
+    const products = selectMyProductList(state)
+    const ownedProductIds: ProductIdList = (products || [])
+        .filter(({ ownerAddress }) => addressSet.has((ownerAddress || '').toLowerCase()))
+        .map(({ id }) => getValidId(id || ''))
     dispatch(getTransactionEventsRequest())
 
-    const web3Accounts = selectEthereumIdentities(getState())
-
-    return services.getTransactionEvents((web3Accounts || []).map((account) => (account.json || {}).address || ''))
+    return services.getTransactionEvents(addresses, ownedProductIds)
         .then((result) => {
             dispatch(getTransactionEventsSuccess(result))
             dispatch(showEvents())

@@ -2,9 +2,8 @@
 
 import BN from 'bignumber.js'
 
-import type { TimeUnit, Currency, NumberString } from '$shared/flowtype/common-types'
-
-import { timeUnits, currencies } from '$shared/utils/constants'
+import type { TimeUnit, PaymentCurrency, ContractCurrency, NumberString } from '$shared/flowtype/common-types'
+import { timeUnits, contractCurrencies, paymentCurrencies } from '$shared/utils/constants'
 import { toSeconds, getAbbreviation } from './time'
 
 /**
@@ -14,7 +13,7 @@ import { toSeconds, getAbbreviation } from './time'
  */
 export const isPriceValid = (value: string) => {
     const bn = BN(value)
-    return !bn.isNaN() && bn.isPositive()
+    return !bn.isNaN() && bn.isGreaterThan(0)
 }
 
 export const priceForTimeUnits = (pricePerSecond: NumberString | BN, timeAmount: number | NumberString | BN, timeUnit: TimeUnit): BN => {
@@ -48,23 +47,23 @@ export const usdToData = (usd: BN, dataPerUsd: BN): BN => BN(usd).multipliedBy(d
  * @param fromCurrency Input currency.
  * @param toCurrency Output currency.
  */
-export const convert = (amount: BN, dataPerUsd: BN, fromCurrency: Currency, toCurrency: Currency): BN => {
+export const convert = (amount: BN, dataPerUsd: BN, fromCurrency: ContractCurrency, toCurrency: ContractCurrency): BN => {
     if (fromCurrency === toCurrency) {
         return amount
     }
-    const calc = fromCurrency === currencies.DATA ? dataToUsd : usdToData
+    const calc = fromCurrency === contractCurrencies.DATA ? dataToUsd : usdToData
     return calc(amount, dataPerUsd)
 }
 
 export const dataForTimeUnits = (
     pricePerSecond: NumberString | BN,
     dataPerUsd: BN,
-    fromCurrency: Currency,
+    fromCurrency: ContractCurrency,
     timeAmount: number | NumberString | BN,
     timeUnit: TimeUnit,
 ): BN => (
     priceForTimeUnits(
-        convert(pricePerSecond, dataPerUsd, fromCurrency, currencies.DATA),
+        convert(pricePerSecond, dataPerUsd, fromCurrency, contractCurrencies.DATA),
         timeAmount,
         timeUnit,
     )
@@ -96,14 +95,23 @@ export const formatAmount = (value: BN, maxDigits: ?number): BN => {
  * @param currency
  * @returns {*}
  */
-export const formatDecimals = (value: number | BN, currency: Currency): string => {
+export const formatDecimals = (value: number | BN, currency: ContractCurrency | PaymentCurrency): string => {
     let result
+
+    if (currency === paymentCurrencies.ETH) {
+        return BN(value).toFixed(4)
+    }
+
+    if (currency === paymentCurrencies.DAI) {
+        return BN(value).toFixed(2)
+    }
+
     if (Math.abs(value) < 10) {
-        result = (currency === currencies.DATA) ? BN(value).decimalPlaces(3) : BN(value).toFixed(2)
+        result = (currency === contractCurrencies.DATA) ? BN(value).decimalPlaces(3) : BN(value).toFixed(2)
     } else if (Math.abs(value) < 100) {
-        result = (currency === currencies.DATA) ? BN(value).decimalPlaces(2) : BN(value).toFixed(2)
+        result = (currency === contractCurrencies.DATA) ? BN(value).decimalPlaces(2) : BN(value).toFixed(2)
     } else if (Math.abs(value) < 1000) {
-        result = (currency === currencies.DATA) ? BN(value).decimalPlaces(1) : BN(value).toFixed(1)
+        result = (currency === contractCurrencies.DATA) ? BN(value).decimalPlaces(1) : BN(value).toFixed(1)
     } else {
         result = BN(value).decimalPlaces(0)
     }
@@ -132,7 +140,7 @@ export const getMostRelevantTimeUnit = (pricePerSecond: BN): TimeUnit => {
  * @param currency Currency.
  * @param timeUnit TimeUnit to use. If omitted, the most relevant time unit is calculated.
  */
-export const formatPrice = (pricePerSecond: BN, currency: Currency, timeUnit?: TimeUnit): string => {
+export const formatPrice = (pricePerSecond: BN, currency: PaymentCurrency | ContractCurrency, timeUnit?: TimeUnit): string => {
     const actualTimeUnit = timeUnit || getMostRelevantTimeUnit(pricePerSecond)
     const price = priceForTimeUnits(pricePerSecond, 1, actualTimeUnit)
     const timeUnitAbbreviation = getAbbreviation(actualTimeUnit)

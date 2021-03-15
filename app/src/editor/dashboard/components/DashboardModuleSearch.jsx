@@ -2,19 +2,20 @@
  * Popup canvas/module searcher for adding new items to a dashboard.
  */
 
+/* eslint-disable react/no-array-index-key */
+
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import startCase from 'lodash/startCase'
 import groupBy from 'lodash/groupBy'
 import cx from 'classnames'
 
-import Modal from '$editor/shared/components/Modal'
 import SearchPanel, { SearchRow } from '$editor/shared/components/SearchPanel'
 import CanvasModuleSearchStyles from '$editor/canvas/components/ModuleSearch.pcss'
 
 import { getCanvases } from '../services'
 import { dashboardModuleSearch } from '../state'
 
-import DashboardStyles from '../index.pcss'
+import { DashboardElements } from './Dashboard.pcss'
 import styles from './DashboardModuleSearch.pcss'
 
 function DashboardModuleSearchItem({
@@ -49,9 +50,9 @@ function DashboardModuleSearchItem({
                 {canvas.name}
             </SearchRow>
             {/* rows of matching canvas modules */}
-            {!!isExpanded && modules.map((m) => (
+            {!!isExpanded && modules.map((m, index) => (
                 <SearchRow
-                    key={m.hash}
+                    key={index}
                     onClick={() => onSelect(canvas.id, m)}
                     className={cx(styles.UIModule, {
                         [styles.isOnDashboard]: isOnDashboard(canvas.id, m),
@@ -65,7 +66,7 @@ function DashboardModuleSearchItem({
     )
 }
 
-class DashboardModuleSearch extends React.PureComponent {
+export default class DashboardModuleSearch extends React.PureComponent {
     state = {
         search: '',
         canvases: [],
@@ -113,24 +114,24 @@ class DashboardModuleSearch extends React.PureComponent {
     }
 
     render() {
-        const { modalApi, dashboard } = this.props
+        const { isOpen, open, dashboard } = this.props
         const { search, canvases } = this.state
         if (!dashboard) { return null }
         const availableDashboardModules = groupBy(dashboardModuleSearch(canvases, search), 'canvasId')
         return (
             <SearchPanel
                 className={styles.ModuleSearch}
-                bounds={`.${DashboardStyles.Dashboard}`}
+                bounds={`.${DashboardElements}`}
                 placeholder="Search or select a module"
                 onChange={this.onChange}
-                isOpen
-                open={modalApi.open}
+                isOpen={isOpen}
+                open={open}
             >
-                {Object.entries(availableDashboardModules).map(([canvasId, modules]) => {
+                {Object.entries(availableDashboardModules).map(([canvasId, modules], index) => {
                     const canvas = canvases.find(({ id }) => id === canvasId)
                     return (
                         <DashboardModuleSearchItem
-                            key={canvas.id}
+                            key={index}
                             canvas={canvas}
                             modules={modules}
                             onSelect={this.onSelect}
@@ -144,11 +145,3 @@ class DashboardModuleSearch extends React.PureComponent {
         )
     }
 }
-
-export default (props) => (
-    <Modal modalId="DashboardModuleSearch">
-        {({ api }) => (
-            <DashboardModuleSearch modalApi={api} {...props} />
-        )}
-    </Modal>
-)

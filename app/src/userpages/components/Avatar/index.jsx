@@ -1,48 +1,57 @@
 // @flow
 
 import React from 'react'
-import cx from 'classnames'
+import styled from 'styled-components'
 import { Link } from 'react-router-dom'
 
-import AvatarUpload from './AvatarUpload'
-import NameAndEmail from './NameAndEmail'
 import AvatarCircle from '$shared/components/AvatarCircle'
-import type { User } from '$shared/flowtype/user-types'
+import AvatarImage from '$shared/components/AvatarImage'
 
-import styles from './avatar.pcss'
-import links from '$shared/../links'
+import routes from '$routes'
+import NameAndUsername from './NameAndUsername'
 
-type Props = {
-    user: User,
-    editable?: boolean,
-    className?: string,
-    linkToProfile?: boolean,
-    onImageChange?: (?File) => Promise<void>,
-}
+const StyledLink = styled(Link)`
+  text-decoration: none;
 
-const Avatar = ({
-    user,
-    editable,
-    className,
-    linkToProfile,
-    onImageChange,
-}: Props) => (
-    <div className={cx(className, styles.container)}>
+  &:hover,
+  &:focus,
+  &:active {
+    text-decoration: none;
+  }
+`
+
+const UnstyledAvatar = ({ user, linkToProfile, children, ...props }) => (
+    <div {...props}>
         {!!linkToProfile && (
-            <Link to={links.userpages.profile} className={styles.avatarLink}>
-                <AvatarCircle name={user.name} imageUrl={user.imageUrlLarge} className={styles.avatarCircle} />
-            </Link>
+            <StyledLink to={routes.profile()}>
+                <AvatarCircle>
+                    <AvatarImage
+                        src={user.imageUrlLarge}
+                        username={user.username}
+                    />
+                </AvatarCircle>
+            </StyledLink>
         )}
         {!linkToProfile && (
-            <AvatarCircle name={user.name} imageUrl={user.imageUrlLarge} className={styles.avatarCircle} uploadAvatarPlaceholder />
+            <AvatarCircle>
+                <AvatarImage
+                    src={user.imageUrlLarge}
+                    username={user.username}
+                />
+            </AvatarCircle>
         )}
-        {!editable && (
-            <NameAndEmail name={user.name} email={user.username} />
-        )}
-        {editable && onImageChange && (
-            <AvatarUpload onImageChange={onImageChange} image={(user && user.imageUrlLarge) || ''} />
-        )}
+        <NameAndUsername name={user.name}>
+            {children}
+        </NameAndUsername>
     </div>
 )
+
+const Avatar = styled(UnstyledAvatar)`
+    display: flex;
+
+    ${AvatarCircle} {
+        margin-right: 1.5rem;
+    }
+`
 
 export default Avatar

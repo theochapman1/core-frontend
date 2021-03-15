@@ -5,10 +5,10 @@
 import React, { useContext, useState, useCallback, useMemo } from 'react'
 import get from 'lodash/get'
 
-import useIsMountedRef from '$shared/utils/useIsMountedRef'
-import * as SubscriptionStatus from '$editor/shared/components/SubscriptionStatus'
-import { Context as PermissionContext } from '$editor/canvas/hooks/useCanvasPermissions'
-import usePending from '$editor/shared/hooks/usePending'
+import useIsMountedRef from '$shared/hooks/useIsMountedRef'
+import * as SubscriptionStatus from '$shared/contexts/SubscriptionStatus'
+import usePending from '$shared/hooks/usePending'
+import { pushErrorNotification } from '$editor/canvas/hooks/useCanvasNotifications'
 
 import * as services from '../../services'
 import * as CanvasState from '../../state'
@@ -16,6 +16,8 @@ import * as CanvasLinking from '../../state/linking'
 
 import useCanvasStateChangeEffect from '../../hooks/useCanvasStateChangeEffect'
 import useCanvasUpdater from './useCanvasUpdater'
+import useEmbedMode from './useEmbedMode'
+import useCanvasPermissions from './useCanvasPermissions'
 
 export const RunControllerContext = React.createContext()
 
@@ -28,16 +30,24 @@ function isStateNotAllowedError(error) {
 }
 
 function useRunController(canvas = EMPTY) {
+    const isEmbedMode = useEmbedMode()
     const subscriptionStatus = useContext(SubscriptionStatus.Context)
-    const { permissions } = useContext(PermissionContext)
+    const {
+        hasWritePermission,
+        hasSharePermission,
+        hasStartStopPermission,
+        hasDeletePermission,
+        hasInteractPermission,
+    } = useCanvasPermissions()
     const { replaceCanvas } = useCanvasUpdater()
     const isMountedRef = useIsMountedRef()
 
-    const createAdhocPending = usePending('CREATE ADHOC')
-    const startPending = usePending('START')
-    const stopPending = usePending('STOP')
-    const exitPending = usePending('EXIT')
-    const unlinkPending = usePending('UNLINK')
+    const createAdhocPending = usePending('canvas.CREATE ADHOC')
+    const startPending = usePending('canvas.START')
+    const stopPending = usePending('canvas.STOP')
+    const exitPending = usePending('canvas.EXIT')
+    const unlinkPending = usePending('canvas.UNLINK')
+    const loadPending = usePending('canvas.LOAD')
 
     const [isStarting, setIsStarting] = useState(false) // true immediately before starting a canvas
     const [isStopping, setIsStopping] = useState(false) // true immediately before stopping a canvas
@@ -47,15 +57,9 @@ function useRunController(canvas = EMPTY) {
     // true if canvas exists and is starting or already running
     const isActive = canvas !== EMPTY && (isStarting || isRunning)
 
-    const hasSharePermission = permissions &&
-        permissions.some((p) => p.operation === 'share')
-
-    const hasWritePermission = permissions &&
-        permissions.some((p) => p.operation === 'write')
-
-    const isEditable = !isActive &&
-        !canvas.adhoc &&
-        hasWritePermission
+    // historical subscription should start as soon as starting.
+    // realtime subscription starts after canvas is runnning
+    const isSubscriptionActive = canvas.adhoc ? isActive : isRunning
 
     const start = useCallback(async (canvas, options) => {
         if (isHistorical && !canvas.adhoc) {
@@ -81,7 +85,12 @@ function useRunController(canvas = EMPTY) {
                 }
 
                 if (isMountedRef.current) { setIsStarting(false) }
-                throw err
+                if (err.response) {
+                    pushErrorNotification(err.response.data)
+                } else {
+                    pushErrorNotification(err)
+                }
+                return canvas
             })
 
         if (!isMountedRef.current) { return }
@@ -94,14 +103,19 @@ function useRunController(canvas = EMPTY) {
 
     const stop = useCallback(async (canvas) => {
         setIsStopping(true)
-        if (canvas.settings.parentCanvasId != null) {
-            CanvasLinking.unlink(canvas.settings.parentCanvasId) // remove link if exists
-        }
         return stopPending.wrap(() => services.stop(canvas))
-            .then((canvas) => {
+            .then(async (result) => {
+                if (!result || !result.id) {
+                    setIsStopping(false)
+                    return
+                }
+
+                if (canvas.settings.parentCanvasId != null) {
+                    CanvasLinking.unlink(canvas.settings.parentCanvasId) // remove link if exists
+                }
                 if (!isMountedRef.current) { return }
                 setIsStopping(false)
-                return canvas
+                replaceCanvas(() => result)
             }, async (err) => {
                 if (isStateNotAllowedError(err)) {
                     if (!canvas.adhoc) { return } // trying to stop an already stopped canvas, ignore
@@ -112,7 +126,8 @@ function useRunController(canvas = EMPTY) {
                 }
 
                 if (isMountedRef.current) { setIsStopping(false) }
-                throw err
+                pushErrorNotification(err)
+                return canvas
             })
     }, [stopPending, setIsStopping, isMountedRef, unlinkParent, replaceCanvas])
 
@@ -135,6 +150,7 @@ function useRunController(canvas = EMPTY) {
     useCanvasStateChangeEffect(canvas, useCallback(() => setIsStopping(false), [setIsStopping]))
 
     const isAnyPending = [
+        loadPending,
         createAdhocPending,
         startPending,
         stopPending,
@@ -144,10 +160,23 @@ function useRunController(canvas = EMPTY) {
 
     const isPending = !!(isStopping || isStarting || isAnyPending)
 
+    // e.g. move/resize but not commit
+    const isAdjustable = !isPending
+
+    // write commits
+    const isEditable = (
+        !isEmbedMode &&
+        !isActive &&
+        isAdjustable &&
+        !canvas.adhoc &&
+        hasWritePermission
+    )
+
     // controls whether user can currently start/stop canvas
     const canChangeRunState = (
+        !isEmbedMode && // can't change run state when in embed mode
         !isPending && // no pending
-        hasWritePermission && ( // has write perms
+        hasStartStopPermission && ( // has start/stop perms
             // check historical settings ok if historical
             !isHistorical ||
             // don't prevent stopping running canvas if not valid
@@ -165,14 +194,20 @@ function useRunController(canvas = EMPTY) {
         isActive,
         isRunning,
         isHistorical,
+        isAdjustable,
         isEditable,
+        isSubscriptionActive,
+        hasStartStopPermission,
         hasSharePermission,
         hasWritePermission,
+        hasDeletePermission,
+        hasInteractPermission,
         start,
         stop,
         exit,
-    }), [canvas, isPending, isStarting, isActive, isRunning, isHistorical, isEditable,
-        hasSharePermission, hasWritePermission, isStopping, start, stop, exit, canChangeRunState])
+    }), [canvas, isPending, isStarting, isActive, isRunning, isHistorical, isEditable, isAdjustable,
+        hasStartStopPermission, hasWritePermission, hasSharePermission, hasDeletePermission, hasInteractPermission,
+        isStopping, start, stop, exit, canChangeRunState, isSubscriptionActive])
 }
 
 export default function RunControllerProvider({ children, canvas }) {

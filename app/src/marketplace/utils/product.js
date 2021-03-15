@@ -3,13 +3,23 @@
 import BN from 'bignumber.js'
 
 import type { NumberString } from '$shared/flowtype/common-types'
-import type { Product, EditProduct, ProductId, SmartContractProduct } from '../flowtype/product-types'
+import { contractCurrencies as currencies, productStates } from '$shared/utils/constants'
+import InvalidHexStringError from '$shared/errors/InvalidHexStringError'
+import type { Product, ProductId, SmartContractProduct, ProductType } from '../flowtype/product-types'
 
-import { currencies, productStates } from '$shared/utils/constants'
+import { productTypes } from './constants'
 import { fromAtto, fromNano, toAtto, toNano } from './math'
 import { getPrefixedHexString, getUnprefixedHexString, isValidHexString } from './smartContract'
 
 export const isPaidProduct = (product: Product) => product.isFree === false || BN(product.pricePerSecond).isGreaterThan(0)
+
+export const isDataUnionProduct = (productOrProductType?: Product | ProductType) => {
+    const { type } = (typeof productOrProductType === 'string') ? {
+        type: productOrProductType,
+    } : (productOrProductType || {})
+
+    return type === productTypes.DATAUNION
+}
 
 export const validateProductPriceCurrency = (priceCurrency: string) => {
     const currencyIndex = Object.keys(currencies).indexOf(priceCurrency)
@@ -44,6 +54,7 @@ export const mapProductFromContract = (id: ProductId, result: any): SmartContrac
         priceCurrency: Object.keys(currencies)[result.currency],
         minimumSubscriptionInSeconds: Number.isNaN(minimumSubscriptionSeconds) ? 0 : minimumSubscriptionSeconds,
         state: Object.keys(productStates)[result.state],
+        requiresWhitelist: result.requiresWhitelist,
     }
 }
 
@@ -53,7 +64,7 @@ export const mapPriceFromApi = (pricePerSecond: NumberString): string => fromNan
 
 export const mapPriceToApi = (pricePerSecond: NumberString | BN): string => toNano(pricePerSecond).toFixed(0)
 
-export const mapProductFromApi = (product: Product | EditProduct): Product => {
+export const mapProductFromApi = (product: Product): Product => {
     const pricePerSecond = mapPriceFromApi(product.pricePerSecond)
     return {
         ...product,
@@ -63,7 +74,7 @@ export const mapProductFromApi = (product: Product | EditProduct): Product => {
 
 export const mapAllProductsFromApi = (products: Array<Product>): Array<Product> => products.map(mapProductFromApi)
 
-export const mapProductToApi = (product: Product | EditProduct) => {
+export const mapProductToPostApi = (product: Product): Product => {
     const pricePerSecond = mapPriceToApi(product.pricePerSecond)
     validateApiProductPricePerSecond(pricePerSecond)
     validateProductPriceCurrency(product.priceCurrency)
@@ -73,13 +84,34 @@ export const mapProductToApi = (product: Product | EditProduct) => {
     }
 }
 
+export const isPublishedProduct = (p: Product) => p.state === productStates.DEPLOYED
+
+export const mapProductToPutApi = (product: Product): Object => {
+    // For published paid products, the some fields can only be updated on the smart contract
+    if (isPaidProduct(product) && isPublishedProduct(product)) {
+        const {
+            ownerAddress,
+            beneficiaryAddress,
+            pricePerSecond,
+            priceCurrency,
+            minimumSubscriptionInSeconds,
+            ...otherData
+        } = product
+
+        return otherData
+    }
+
+    const pricePerSecond = mapPriceToApi(product.pricePerSecond)
+
+    return {
+        ...product,
+        pricePerSecond,
+    }
+}
+
 export const getValidId = (id: string, prefix: boolean = true): string => {
     if (!isValidHexString(id) || parseInt(id, 16) === 0) {
-        throw new Error(`${id} is not valid hex string`)
+        throw new InvalidHexStringError(id)
     }
     return prefix ? getPrefixedHexString(id) : getUnprefixedHexString(id)
 }
-
-export const isPublishedProduct = (p: Product | EditProduct) => p.state === productStates.DEPLOYED
-
-export const isPaidAndNotPublishedProduct = (p: Product | EditProduct) => isPaidProduct(p) && !isPublishedProduct(p)

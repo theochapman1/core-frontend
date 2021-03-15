@@ -1,71 +1,83 @@
 // @flow
 
-import React from 'react'
-import { I18n } from 'react-redux-i18n'
+import React, { useState, useCallback, useRef } from 'react'
 
+import ModalPortal from '$shared/components/ModalPortal'
 import Dialog from '$shared/components/Dialog'
-import TextInput from '$shared/components/TextInput'
+import Label from '$ui/Label'
+import Text from '$ui/Text'
 
 import styles from './identityNameDialog.pcss'
 
 type Props = {
     onClose: () => void,
-    onSave: (string) => void,
+    onCancel: () => void,
+    onSave: (string) => Promise<void>,
+    waiting?: boolean,
+    initialValue?: string,
+    disabled?: boolean,
 }
 
-type State = {
-    name: string,
-}
+const IdentityNameDialog = ({
+    onClose,
+    onCancel,
+    onSave: onSaveProp,
+    waiting,
+    initialValue,
+    disabled,
+}: Props) => {
+    const [name, setName] = useState(initialValue || '')
+    const nameRef = useRef()
+    nameRef.current = name
 
-class IdentityNameDialog extends React.Component<Props, State> {
-    state = {
-        name: '',
-    }
+    const onSave = useCallback(() => {
+        onSaveProp(nameRef.current || '')
+    }, [onSaveProp, nameRef])
 
-    onSave = () => {
-        this.props.onSave(this.state.name)
-    }
+    const onNameChange = useCallback((e: SyntheticInputEvent<EventTarget>) => {
+        setName(e.target.value)
+    }, [])
 
-    onNameChange = (e: SyntheticInputEvent<EventTarget>) => {
-        this.setState({
-            name: e.target.value,
-        })
-    }
-
-    render() {
-        const { onClose } = this.props
-        const { name } = this.state
-        return (
+    return (
+        <ModalPortal>
             <Dialog
-                title={I18n.t('modal.newIdentity.defaultTitle')}
+                title="Add a name to this Ethereum account"
                 onClose={onClose}
                 actions={{
                     cancel: {
-                        title: I18n.t('modal.common.cancel'),
-                        color: 'link',
+                        title: 'Cancel',
+                        kind: 'link',
                         outline: true,
-                        onClick: onClose,
+                        onClick: () => onCancel(),
                     },
                     save: {
-                        title: I18n.t('modal.common.next'),
-                        color: 'primary',
-                        onClick: this.onSave,
-                        disabled: !name,
+                        title: 'Next',
+                        kind: 'primary',
+                        onClick: () => onSave(),
+                        disabled: !name || !!waiting,
+                        spinner: !!waiting,
                     },
                 }}
+                disabled={disabled}
             >
                 <div className={styles.textField}>
-                    <TextInput
-                        label=""
-                        placeholder={I18n.t('modal.newIdentity.placeholder')}
+                    <Label>
+                        Account name
+                    </Label>
+                    <Text
+                        placeholder="eg. Main Eth Address"
                         value={name}
-                        onChange={this.onNameChange}
-                        preserveLabelSpace
+                        onChange={onNameChange}
+                        disabled={!!waiting}
                     />
                 </div>
             </Dialog>
-        )
-    }
+        </ModalPortal>
+    )
+}
+
+IdentityNameDialog.defaultProps = {
+    initialValue: '',
 }
 
 export default IdentityNameDialog

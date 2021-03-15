@@ -2,11 +2,10 @@
 
 import EventEmitter from 'events'
 import type { PromiEvent } from 'web3'
-import { I18n } from 'react-redux-i18n'
 import { isHex } from 'web3-utils'
+import { generateAddress, bufferToHex } from 'ethereumjs-util'
+import BN from 'bignumber.js'
 
-import { arePricesEqual } from '../utils/price'
-import { isPaidProduct } from '../utils/product'
 import { checkEthereumNetworkIsCorrect } from '$shared/utils/web3'
 
 import getWeb3, { getPublicWeb3, StreamrWeb3 } from '$shared/web3/web3Provider'
@@ -17,10 +16,11 @@ import type {
     SmartContractConfig,
     SmartContractTransaction,
 } from '$shared/flowtype/web3-types'
-import type { EditProduct, SmartContractProduct } from '../flowtype/product-types'
+import type { NumberString } from '$shared/flowtype/common-types'
 
 import Transaction from '$shared/utils/Transaction'
-import { gasLimits } from '$shared/utils/constants'
+import type { Product, SmartContractProduct } from '../flowtype/product-types'
+import { arePricesEqual } from '../utils/price'
 
 export type Callable = {
     call: () => SmartContractCall<*>,
@@ -32,13 +32,25 @@ export type Sendable = {
     }) => PromiEvent,
 }
 
-export const areAddressesEqual = (first: Address, second: Address) => first.toLowerCase() === second.toLowerCase()
+export const areAddressesEqual = (first: Address, second: Address) => (first || '').toLowerCase() === (second || '').toLowerCase()
 
 export const hexEqualsZero = (hex: string): boolean => /^(0x)?0+$/.test(hex)
 
 export const getPrefixedHexString = (hex: string): string => hex.replace(/^0x|^/, '0x')
 
 export const getUnprefixedHexString = (hex: string): string => hex.replace(/^0x|^/, '')
+
+export const calculateContractAddress = async (account: Address): Promise<Address> => {
+    const web3 = getWeb3()
+    const currentNonce = await web3.eth.getTransactionCount(account)
+
+    if (!Number.isInteger(currentNonce)) {
+        throw new Error('Could not calculate address')
+    }
+
+    const futureAddress = bufferToHex(generateAddress(account, currentNonce))
+    return futureAddress
+}
 
 /**
  * Tells if the given string is valid hex or not.
@@ -52,8 +64,7 @@ export const getContract = ({ abi, address }: SmartContractConfig, usePublicNode
     return new web3.eth.Contract(abi, address)
 }
 
-export const isUpdateContractProductRequired = (contractProduct: SmartContractProduct, editProduct: EditProduct) => (
-    isPaidProduct(editProduct) &&
+export const isUpdateContractProductRequired = (contractProduct: SmartContractProduct, editProduct: Product) => (
     (!arePricesEqual(contractProduct.pricePerSecond, editProduct.pricePerSecond) ||
     !areAddressesEqual(contractProduct.beneficiaryAddress, editProduct.beneficiaryAddress) ||
     contractProduct.priceCurrency !== editProduct.priceCurrency)
@@ -63,9 +74,12 @@ export const call = (method: Callable): SmartContractCall<*> => method.call()
 
 export const send = (method: Sendable, options?: {
     gas?: number,
+    value?: NumberString | BN,
 }): SmartContractTransaction => {
     const web3 = getWeb3()
     const emitter = new EventEmitter()
+    // NOTE: looks like there's double handling of errors happening here
+    // i.e. .catch + on('error')
     const errorHandler = (error: Error) => {
         emitter.emit('error', error)
     }
@@ -74,28 +88,30 @@ export const send = (method: Sendable, options?: {
         web3.getDefaultAccount(),
         checkEthereumNetworkIsCorrect(web3),
     ])
-        .then(([account]) => {
-            const sentMethod = method
-                .send({
-                    gas: (options && options.gas) || gasLimits.DEFAULT,
-                    from: account,
-                })
-                .on('error', errorHandler)
-                .on('transactionHash', (hash) => {
-                    sentMethod.off('error', errorHandler)
-                    sentMethod.on('error', (error, receipt) => {
+        .then(([account]) => (
+            method.send({
+                gas: (options && options.gas),
+                from: account,
+                value: options && options.value,
+            })
+                .on('error', (error, receipt) => {
+                    if (receipt) {
                         errorHandler(new TransactionError(error.message, receipt))
-                    })
+                    } else {
+                        errorHandler(error)
+                    }
+                })
+                .on('transactionHash', (hash) => {
                     emitter.emit('transactionHash', hash)
                 })
                 .on('receipt', (receipt) => {
                     if (parseInt(receipt.status, 16) === 0) {
-                        errorHandler(new TransactionError(I18n.t('error.txFailed'), receipt))
+                        errorHandler(new TransactionError('Transaction failed', receipt))
                     } else {
                         emitter.emit('receipt', receipt)
                     }
                 })
-        }, errorHandler)
+        ), errorHandler)
 
     return tx
 }

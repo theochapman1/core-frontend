@@ -1,35 +1,67 @@
 // @flow
 
 import React from 'react'
-import { Translate, I18n } from 'react-redux-i18n'
 
-import NoDataPng from '../../../assets/wallet_no_data.png'
-import NoDataPng2x from '../../../assets/wallet_no_data@2x.png'
+import ModalPortal from '$shared/components/ModalPortal'
+import NoDataPng from '$shared/assets/images/wallet_no_data.png'
+import NoDataPng2x from '$shared/assets/images/wallet_no_data@2x.png'
 import Dialog from '$shared/components/Dialog'
-import ExternalLinkButton from '$shared/components/Buttons/ExternalLinkButton'
+import Button from '$shared/components/Button'
+import Link from '$shared/components/Link'
 
-import styles from './getDataTokensDialog.pcss'
+import styles from '$shared/components/Web3ErrorDialog/Web3NotDetectedDialog/web3NotDetectedDialog.pcss'
 
 export type Props = {
     onCancel: () => void,
 }
 
 const GetDataTokensDialog = ({ onCancel }: Props) => (
-    <Dialog
-        title={I18n.t('modal.getDataTokensDialog.title')}
-        onClose={onCancel}
-    >
-        <img className={styles.icon} src={NoDataPng} srcSet={`${NoDataPng2x} 2x`} alt={I18n.t('error.wallet')} />
-        <Translate value="modal.getDataTokensDialog.message" className={styles.message} />
-
-        <div className={styles.buttonContainer}>
-            <ExternalLinkButton
-                textI18nKey="modal.getDataTokensDialog.link.bancor"
-                href="https://www.bancor.network/"
-                className={styles.button}
-            />
-        </div>
-    </Dialog>
+    <ModalPortal>
+        <Dialog
+            title="No DATA balance"
+            onClose={onCancel}
+            renderActions={() => (
+                <div className={styles.buttonContainer}>
+                    <Button
+                        kind="secondary"
+                        tag={Link}
+                        href="https://uniswap.io"
+                        target="_blank"
+                    >
+                        Uniswap
+                    </Button>
+                    <Button
+                        kind="secondary"
+                        tag={Link}
+                        href="https://www.bancor.network/"
+                        target="_blank"
+                    >
+                        Bancor
+                    </Button>
+                    <Button
+                        kind="secondary"
+                        tag={Link}
+                        href="https://binance.com"
+                        target="_blank"
+                    >
+                        Binance
+                    </Button>
+                </div>
+            )}
+        >
+            <img className={styles.icon} src={NoDataPng} srcSet={`${NoDataPng2x} 2x`} alt="Wallet error" />
+            <p className={styles.message}>
+                DATA is currently required to subscribe to products on the Marketplace. Please purchase some and try again
+            </p>
+            <p className={styles.mobileMessage}>
+                DATA is currently required to subscribe
+                <br />
+                to products on the Marketplace.
+                <br />
+                Please purchase some and try again
+            </p>
+        </Dialog>
+    </ModalPortal>
 )
 
 export default GetDataTokensDialog

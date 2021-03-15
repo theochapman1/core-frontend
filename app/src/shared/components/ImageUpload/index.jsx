@@ -1,19 +1,16 @@
 // @flow
 
-import React, { Component, Fragment } from 'react'
-import Dropzone from 'react-dropzone'
+import React, { Fragment, useState, useCallback, useMemo } from 'react'
+import { useDropzone } from 'react-dropzone'
 import cx from 'classnames'
-import { Translate, I18n } from 'react-redux-i18n'
-import MediaQuery from 'react-responsive'
 
-import breakpoints from '$app/scripts/breakpoints'
 import { maxFileSizeForImageUpload } from '$shared/utils/constants'
 import PngIcon from '$shared/components/PngIcon'
+import useIsMounted from '$shared/hooks/useIsMounted'
+import useFilePreview from '$shared/hooks/useFilePreview'
 
 import Notification from '$shared/utils/Notification'
 import styles from './imageUpload.pcss'
-
-const { lg } = breakpoints
 
 export type OnUploadError = (errorMessage: string) => void
 
@@ -22,167 +19,126 @@ type DropzoneFile = File & {
 }
 
 type Props = {
-    setImageToUpload?: (File) => void,
+    setImageToUpload?: (DropzoneFile) => void | Promise<void>,
     originalImage?: ?string,
-    dropzoneClassname?: string,
+    className?: string,
+    disabled?: boolean,
+    noPreview?: boolean,
 }
 
-type State = {
-    file: ?DropzoneFile,
-    imageUploading: ?boolean,
-    imageUploaded: ?boolean,
-    dragEntered: boolean,
-}
+const ImageUpload = ({
+    setImageToUpload,
+    originalImage,
+    className,
+    noPreview,
+    disabled,
+}: Props) => {
+    const [uploading, setUploading] = useState(false)
+    const { preview, createPreview } = useFilePreview()
+    const isMounted = useIsMounted()
 
-class ImageUpload extends Component<Props, State> {
-    state = {
-        file: null,
-        imageUploading: false,
-        imageUploaded: false,
-        dragEntered: false,
-    }
+    const onDrop = useCallback((files: Array<File>) => {
+        if (!isMounted()) { return }
 
-    componentWillUnmount() {
-        this.unmounted = true
-    }
+        const [image] = files
 
-    onDragEnter = () => {
-        this.setState({
-            dragEntered: true,
-        })
-    }
-
-    onDragLeave = () => {
-        this.setState({
-            dragEntered: false,
-        })
-    }
-
-    onDrop = (files: Array<File>) => {
-        if (this.unmounted) {
-            return
-        }
-
-        if (files && files.length > 0) {
-            const image = files[0]
-
+        if (image) {
             // Save image to the state also so that a preview can be shown
-            this.setState({
-                file: image,
-                imageUploading: true,
-                imageUploaded: false,
-            })
+            const imagePreview = createPreview(image)
 
-            if (this.props.setImageToUpload) {
-                this.props.setImageToUpload(image)
+            setUploading(true)
+
+            if (setImageToUpload) {
+                // $FlowFixMe property `preview` is missing in  `File`.
+                setImageToUpload(Object.assign(image, {
+                    preview: imagePreview,
+                }))
             }
         }
-    }
+    }, [createPreview, setImageToUpload, isMounted])
 
-    onDropAccepted = () => {
-        if (this.unmounted) {
-            return
-        }
+    const onDropAccepted = useCallback(() => {
+        if (!isMounted()) { return }
 
-        this.setState({
-            imageUploading: false,
-            imageUploaded: true,
-        })
-    }
+        setUploading(false)
+    }, [isMounted])
 
-    onDropRejected = ([file]: any) => {
-        if (this.unmounted) {
-            return
-        }
+    const onDropRejected = useCallback(([file]: any) => {
+        if (!isMounted()) { return }
 
         if (file.size > maxFileSizeForImageUpload) {
             Notification.push({
-                title: I18n.t('imageUpload.fileSize.error', {
-                    limit: Math.floor(maxFileSizeForImageUpload / 1e6),
-                }),
+                title: `Image file size must be less than ${Math.floor(maxFileSizeForImageUpload / 1e6)}MB`,
             })
         }
-        this.setState({
-            imageUploading: false,
-            imageUploaded: false,
-        })
-    }
 
-    getPreviewImage = () => this.state.file && this.state.file.preview
+        setUploading(false)
+    }, [isMounted])
 
-    unmounted = false
+    const { getRootProps, getInputProps, isDragActive } = useDropzone({
+        accept: 'image/jpeg, image/png',
+        maxSize: maxFileSizeForImageUpload,
+        onDrop,
+        onDropAccepted,
+        onDropRejected,
+        disabled,
+    })
 
-    determineStyles = (hasImage: boolean) => {
-        const { imageUploaded } = this.state
-
-        if ((hasImage) || (imageUploaded)) {
-            return styles.dropzoneAdvice
+    const srcImage = useMemo(() => {
+        if (noPreview) {
+            return originalImage
         }
 
-        return styles.dropzoneAdviceNoImage
-    }
+        return preview || originalImage
+    }, [noPreview, originalImage, preview])
 
-    render() {
-        const { originalImage, dropzoneClassname } = this.props
-        const { imageUploading, imageUploaded, dragEntered } = this.state
-        const srcImage = this.getPreviewImage() || originalImage
-        return (
-            <div
-                className={styles.container}
-            >
-                <Dropzone
-                    multiple={false}
-                    className={cx(
-                        styles.dropzone,
-                        dropzoneClassname, {
-                            [styles.dragEntered]: dragEntered,
-                        },
+    return (
+        <div
+            {...getRootProps({
+                className: cx(styles.root, styles.ImageUpload, {
+                    [styles.dropzoneAdviceImageLoading]: !!uploading,
+                    [styles.imageUploaded]: !uploading && !!srcImage,
+                    [styles.dragEntered]: isDragActive,
+                }, className),
+                'aria-disabled': disabled,
+            })}
+        >
+            <input {...getInputProps()} />
+            <div className={styles.dropzoneAdvice}>
+                <PngIcon
+                    className={styles.icon}
+                    name="imageUpload"
+                    alt=""
+                />
+                <p>
+                    {srcImage ? (
+                        <span>
+                            Drag &amp; drop to replace your cover image <br /> or click to browse for one
+                        </span>
+                    ) : (
+                        <Fragment>
+                            <span className={cx(styles.uploadAdvice, styles.uploadAdviceDesktop)}>
+                                Drag &amp; drop to upload a cover image <br /> or click to browse for one
+                            </span>
+                            <span className={cx(styles.uploadAdvice, styles.uploadAdviceTablet)}>
+                                Tap to take a photo or browse for one
+                            </span>
+                            <span className={cx(styles.uploadAdvice, styles.uploadAdviceMobile)}>
+                                Tap to take a photo<br />or browse for one
+                            </span>
+                        </Fragment>
                     )}
-                    onDrop={this.onDrop}
-                    onDragEnter={this.onDragEnter}
-                    onDragLeave={this.onDragLeave}
-                    onDropAccepted={this.onDropAccepted}
-                    onDropRejected={this.onDropRejected}
-                    accept="image/jpeg, image/png"
-                    maxSize={maxFileSizeForImageUpload}
-                >
-                    <div
-                        className={imageUploading
-                            ? styles.dropzoneAdviceImageLoading
-                            : this.determineStyles(!!srcImage)
-                        }
-                    >
-                        <PngIcon
-                            className={styles.icon}
-                            name="imageUpload"
-                            alt={I18n.t('imageUpload.coverImage.upload')}
-                        />
-                        <p>
-                            {(imageUploaded || !!srcImage) ? (
-                                <Translate value="imageUpload.coverImage.replace" dangerousHTML />
-                            ) : (
-                                <Fragment>
-                                    <MediaQuery minWidth={lg.min}>
-                                        <Translate value="imageUpload.coverImage.upload" className={styles.uploadAdvice} dangerousHTML />
-                                    </MediaQuery>
-                                    <MediaQuery maxWidth={lg.min}>
-                                        <Translate value="imageUpload.coverImage.tabletUpload" className={styles.uploadAdvice} dangerousHTML />
-                                    </MediaQuery>
-                                </Fragment>
-                            )}
-                        </p>
-                    </div>
-                    {srcImage && (
-                        <img
-                            className={styles.previewImage}
-                            src={srcImage}
-                            alt={I18n.t('imageUpload.imageCaption')}
-                        />
-                    )}
-                </Dropzone>
+                </p>
             </div>
-        )
-    }
+            {srcImage && (
+                <img
+                    className={styles.previewImage}
+                    src={srcImage}
+                    alt="Uploaded"
+                />
+            )}
+        </div>
+    )
 }
 
 export default ImageUpload

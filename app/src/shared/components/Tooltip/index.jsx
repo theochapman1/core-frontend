@@ -1,62 +1,73 @@
-// @flow
+import React from 'react'
+import styled, { css } from 'styled-components'
 
-import React, { type Node } from 'react'
-import { Tooltip as RsTooltip } from 'reactstrap'
-
-import styles from './tooltip.pcss'
-
-type Props = {
-    value: Node,
-    children?: Node,
-}
-type State = {
-    id: number,
-    open: boolean,
+const TopTheme = {
+    left: '50%',
+    top: 'auto',
+    bottom: 'calc(100% + 8px)',
+    right: 'auto',
+    transform: 'translateX(-50%)',
 }
 
-let counter = 0
+const BottomTheme = {
+    left: '50%',
+    top: 'calc(100% + 8px)',
+    bottom: 'auto',
+    right: 'auto',
+    transform: 'translateX(-50%)',
+}
 
-class Tooltip extends React.Component<Props, State> {
-    constructor(props: Props) {
-        super(props)
-        counter += 1
+const Parent = styled.div``
 
-        this.state = {
-            open: false,
-            id: counter + 1,
+const Root = styled.div`
+    position: relative;
+    display: inline-block;
+    line-height: 1;
+
+    ${({ tooltip, disabled }) => !!tooltip && !disabled && css`
+        ::after {
+            content: "${tooltip}";
+            visibility: hidden;
+            opacity: 0;
+            transition: 0s all;
+            position: absolute;
+            background-color: #323232;
+            border-radius: 2px;
+            color: white;
+            font-size: 12px;
+            line-height: 16px;
+            padding: 2px 6px;
+            white-space: nowrap;
+            z-index: 1;
+            text-align: center;
+
+            top: ${({ theme }) => theme.top};
+            bottom: ${({ theme }) => theme.bottom};
+            left: ${({ theme }) => theme.left};
+            right: ${({ theme }) => theme.right};
+            transform: ${({ theme }) => theme.transform};
         }
-    }
 
-    toggle = () => {
-        this.setState(({ open }) => ({
-            open: !open,
-        }))
-    }
+        ${Parent}:hover &::after,
+        :hover::after {
+            transition-delay: 0.5s;
+            visibility: visible;
+            opacity: 1;
+        }
+    `}
+`
 
-    render() {
-        const { open, id } = this.state
-        const { value, children, ...otherProps } = this.props
-        return (
-            <div id={`tooltip-${id}`} className={styles.tooltipContainer}>
-                {children}
-                <RsTooltip
-                    innerClassName={styles.tooltip}
-                    hideArrow
-                    placement="top"
-                    delay={{
-                        show: 300,
-                        hide: 250,
-                    }}
-                    {...otherProps}
-                    isOpen={open}
-                    target={`tooltip-${id}`}
-                    toggle={this.toggle}
-                >
-                    {value}
-                </RsTooltip>
-            </div>
-        )
-    }
-}
+const UnstyledTooltip = ({ value, placement = TopTheme, ...props }) => (
+    <Root {...props} tooltip={value} theme={placement} />
+)
+
+const Tooltip = styled(UnstyledTooltip)``
+
+Object.assign(Tooltip, {
+    BOTTOM: BottomTheme,
+    Parent,
+    Root,
+    TOP: TopTheme,
+})
 
 export default Tooltip

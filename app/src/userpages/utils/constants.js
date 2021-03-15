@@ -1,6 +1,5 @@
 // @flow
 
-import { I18n } from 'react-redux-i18n'
 import type { SortOption } from '$userpages/flowtype/common-types'
 
 export const defaultColumns = {
@@ -10,19 +9,31 @@ export const defaultColumns = {
     lg: 3,
 }
 
+type ResourceType = 'stream' | 'canvas' | 'product' | 'dashboard' | 'dataunion'
+
 /* eslint-disable arrow-body-style */
-export const getFilters = (): { [string]: SortOption } => {
+export const getFilters = (resourceType: ResourceType): {
+    [string]: SortOption,
+} => {
     return {
-        RECENT: {
-            displayName: I18n.t('userpages.filter.recent'),
+        RECENT_DESC: {
+            displayName: 'Recent',
             filter: {
                 id: 'recent',
                 sortBy: 'lastUpdated',
                 order: 'desc',
             },
         },
+        RECENT_ASC: {
+            displayName: 'Oldest',
+            filter: {
+                id: 'oldest',
+                sortBy: 'lastUpdated',
+                order: 'asc',
+            },
+        },
         RUNNING: {
-            displayName: I18n.t('userpages.filter.running'),
+            displayName: 'Running',
             filter: {
                 id: 'running',
                 key: 'state',
@@ -31,7 +42,7 @@ export const getFilters = (): { [string]: SortOption } => {
             },
         },
         STOPPED: {
-            displayName: I18n.t('userpages.filter.stopped'),
+            displayName: 'Stopped',
             filter: {
                 id: 'stopped',
                 key: 'state',
@@ -40,25 +51,27 @@ export const getFilters = (): { [string]: SortOption } => {
             },
         },
         PUBLISHED: {
-            displayName: I18n.t('userpages.filter.published'),
+            displayName: 'Published',
             filter: {
                 id: 'published',
                 key: 'states',
                 value: 'DEPLOYED',
+                sortBy: 'lastUpdated',
                 order: 'desc',
             },
         },
-        DRAFT: {
-            displayName: I18n.t('userpages.filter.draft'),
+        DRAFTS: {
+            displayName: 'Drafts',
             filter: {
                 id: 'draft',
                 key: 'states',
                 value: 'NOT_DEPLOYED',
+                sortBy: 'lastUpdated',
                 order: 'desc',
             },
         },
         ACTIVE: {
-            displayName: I18n.t('userpages.filter.active'),
+            displayName: 'Active',
             filter: {
                 id: 'active',
                 key: 'subscription',
@@ -67,7 +80,7 @@ export const getFilters = (): { [string]: SortOption } => {
             },
         },
         EXPIRED: {
-            displayName: I18n.t('userpages.filter.expired'),
+            displayName: 'Expired',
             filter: {
                 id: 'expired',
                 key: 'subscription',
@@ -76,25 +89,25 @@ export const getFilters = (): { [string]: SortOption } => {
             },
         },
         SHARED: {
-            displayName: I18n.t('userpages.filter.shared'),
+            displayName: 'Shared',
             filter: {
                 id: 'shared',
                 key: 'operation',
-                value: 'SHARE',
+                value: `${resourceType}_share`,
                 order: 'desc',
             },
         },
         MINE: {
-            displayName: I18n.t('userpages.filter.mine'),
+            displayName: 'Mine',
             filter: {
                 id: 'mine',
                 key: 'operation',
-                value: 'WRITE',
+                value: `${resourceType}_edit`,
                 order: 'desc',
             },
         },
         NAME_ASC: {
-            displayName: I18n.t('userpages.filter.az'),
+            displayName: 'A to Z',
             filter: {
                 id: 'az',
                 sortBy: 'name',
@@ -102,10 +115,37 @@ export const getFilters = (): { [string]: SortOption } => {
             },
         },
         NAME_DESC: {
-            displayName: I18n.t('userpages.filter.za'),
+            displayName: 'Z to A',
             filter: {
                 id: 'za',
                 sortBy: 'name',
+                order: 'desc',
+            },
+        },
+        APPROVE: {
+            displayName: 'Approve',
+            filter: {
+                id: 'approve',
+                key: 'state',
+                value: 'PENDING',
+                order: 'desc',
+            },
+        },
+        REMOVE: {
+            displayName: 'Remove',
+            filter: {
+                id: 'remove',
+                key: 'state',
+                value: 'ACCEPTED',
+                order: 'desc',
+            },
+        },
+        REJECTED: {
+            displayName: 'Rejected',
+            filter: {
+                id: 'rejected',
+                key: 'state',
+                value: 'REJECTED',
                 order: 'desc',
             },
         },

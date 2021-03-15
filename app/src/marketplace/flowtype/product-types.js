@@ -1,21 +1,54 @@
 // @flow
 
 import { productStates } from '$shared/utils/constants'
-import type { CategoryId } from './category-types'
+import { productTypes } from '$mp/utils/constants'
 import type { StreamIdList, StreamId } from '$shared/flowtype/stream-types'
-import type { ErrorInUi, Currency, NumberString, TimeUnit } from '$shared/flowtype/common-types'
+import type {
+    ContractCurrency,
+    PaymentCurrency,
+    NumberString,
+    TimeUnit,
+} from '$shared/flowtype/common-types'
 import type { Address } from '$shared/flowtype/web3-types'
+import type { CategoryId } from './category-types'
 
 export type ProductId = string
 export type ProductState = $Keys<typeof productStates>
 
+export type ProductType = $Values<typeof productTypes>
+
+export type PendingChanges = {
+    adminFee?: string,
+    requiresWhitelist?: boolean,
+}
+
+export type TermsOfUse = {
+    commercialUse: boolean,
+    redistribution: boolean,
+    reselling: boolean,
+    storage: boolean,
+    termsName: ?string,
+    termsUrl: ?string,
+}
+
+export type ContactDetails = {
+    url: ?string,
+    email: ?string,
+    social1: ?string,
+    social2: ?string,
+    social3: ?string,
+    social4: ?string,
+}
+
 export type Product = {
+    adminFee?: string,
     key?: string,
     id: ?ProductId,
     name: string,
     description: string,
     owner: string,
     imageUrl: ?string,
+    newImageToUpload?: ?File,
     thumbnailUrl: ?string,
     state?: ProductState,
     created?: Date,
@@ -28,18 +61,32 @@ export type Product = {
     ownerAddress: Address,
     beneficiaryAddress: Address,
     pricePerSecond: NumberString,
-    priceCurrency: Currency,
+    priceCurrency: ContractCurrency,
     timeUnit?: ?TimeUnit,
+    price?: NumberString,
     isFree?: boolean,
+    type?: ProductType,
+    requiresWhitelist?: boolean,
+    pendingChanges?: PendingChanges,
+    termsOfUse: TermsOfUse,
+    contact: ?ContactDetails,
 }
+
+export type ProductSubscriptionId = string
+
+export type ProductSubscriptionIdList = Array<ProductSubscriptionId>
 
 export type ProductSubscription = {
-    address: Address,
+    id: ProductSubscriptionId,
+    address?: Address,
+    user?: string,
     endsAt: Date,
     product: Product,
+    dateCreated: Date,
+    lastUpdated: Date,
 }
 
-export type EditProduct = Product
+export type ProductSubscriptionList = Array<ProductSubscription>
 
 export type SmartContractProduct = {
     id: ProductId,
@@ -50,6 +97,15 @@ export type SmartContractProduct = {
     priceCurrency: $ElementType<Product, 'priceCurrency'>,
     minimumSubscriptionInSeconds: $ElementType<Product, 'minimumSubscriptionInSeconds'>,
     state: $ElementType<Product, 'state'>,
+    requiresWhitelist: $ElementType<Product, 'requiresWhitelist'>,
+}
+
+export type WhitelistStatus = 'added' | 'removed' | 'subscribed'
+
+export type WhitelistedAddress = {
+    address: Address,
+    status: WhitelistStatus,
+    isPending: boolean,
 }
 
 export type Subscription = {
@@ -80,28 +136,54 @@ export type CategoryFilter = CategoryId
 
 export type SortByFilter = string
 
+export type ProductTypeFilter = string
+
 export type MaxPriceFilter = NumberString
 
-export type AnyFilter = SearchFilter | CategoryFilter | SortByFilter
+export type AnyFilter = SearchFilter | CategoryFilter | SortByFilter | ProductTypeFilter
 
 export type Filter = {
-    search: ?SearchFilter,
-    categories: ?CategoryFilter,
-    sortBy: ?SortByFilter,
-    maxPrice: ?MaxPriceFilter,
+    search?: ?SearchFilter,
+    categories?: ?CategoryFilter,
+    sortBy?: ?SortByFilter,
+    maxPrice?: ?MaxPriceFilter,
+    type?: ?ProductTypeFilter,
 }
 
-export type UserProductPermissionList = {
-    id?: number,
-    user?: string,
-    operation?: string,
-    anonymous?: boolean,
+export type DataUnionId = $ElementType<Product, 'beneficiaryAddress'>
+
+export type MemberCount = {
+    total: number,
+    active: number,
+    inactive: number,
 }
 
-export type ProductPermissions = {
-    read: boolean,
-    write: boolean,
-    share: boolean,
-    fetchingPermissions: boolean,
-    permissionsError: ?ErrorInUi,
+export type DataUnion = {
+    id: DataUnionId,
+    adminFee: number | string,
+    joinPartStreamId: StreamId,
+    owner: Address,
+}
+
+export type DataUnionStat = {
+    id: DataUnionId,
+    memberCount: MemberCount,
+    totalEarnings: number,
+}
+
+export type AccessPeriod = {
+    time: NumberString,
+    timeUnit: TimeUnit,
+    paymentCurrency: PaymentCurrency,
+    price: ?NumberString,
+    approxUsd: ?NumberString,
+}
+
+export type DataUnionSecretId = string
+
+export type DataUnionSecret = {
+    id: DataUnionSecretId,
+    name: string,
+    secret: string,
+    contractAddress: Address,
 }

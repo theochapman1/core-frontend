@@ -1,12 +1,13 @@
 // @flow
 
 import React, { type Node, useState } from 'react'
-import { I18n, Translate } from 'react-redux-i18n'
 import cx from 'classnames'
 import { Label, FormGroup } from 'reactstrap'
 
+import type { Kind } from '$shared/components/Button'
+
 import Dialog from '$shared/components/Dialog'
-import Modal from '$shared/components/Modal'
+import ModalPortal from '$shared/components/ModalPortal'
 import Buttons from '$shared/components/Buttons'
 import Checkbox from '$shared/components/Checkbox'
 
@@ -14,7 +15,7 @@ import styles from './confirmDialog.pcss'
 
 type Button = string | {
     title: string,
-    color?: 'outline' | 'primary' | 'danger',
+    kind?: Kind,
     disabled?: boolean,
     spinner?: boolean,
 }
@@ -48,7 +49,7 @@ const ConfirmDialog = (props: Props) => {
         onAccept,
     } = props
 
-    const cancelButtonProps = (typeof cancelButton === 'object') ? {
+    const cancelButtonProps: Object = (typeof cancelButton === 'object') ? {
         ...cancelButton,
     } : {
         ...(cancelButton ? {
@@ -56,7 +57,7 @@ const ConfirmDialog = (props: Props) => {
         } : {}),
     }
 
-    const acceptButtonProps = (typeof acceptButton === 'object') ? {
+    const acceptButtonProps: Object = (typeof acceptButton === 'object') ? {
         ...acceptButton,
     } : {
         ...(acceptButton ? {
@@ -66,45 +67,47 @@ const ConfirmDialog = (props: Props) => {
 
     const actions = {
         cancel: {
-            title: I18n.t('modal.common.cancel'),
+            title: 'Cancel',
             onClick: onReject,
-            color: 'link',
+            kind: 'link',
             outline: true,
             ...cancelButtonProps,
         },
         save: {
-            title: I18n.t('modal.common.ok'),
+            title: 'OK',
             onClick: (event) => onAccept(event, checked),
-            color: 'primary',
+            kind: 'primary',
             ...acceptButtonProps,
         },
     }
 
     return (
-        <Modal>
+        <ModalPortal>
             <Dialog
                 title={title}
                 onClose={actions.cancel.onClick}
                 actions={actions}
                 renderActions={() => (
-                    <div className={cx({
-                        [styles.footer]: !!dontShowAgain,
+                    <div className={cx(styles.footer, {
+                        [styles.dontShowAgainFooter]: !!dontShowAgain,
                     })}
                     >
                         {!!dontShowAgain && (
                             <div className={cx({
-                                [styles.downShowAgain]: !!dontShowAgain,
+                                [styles.dontShowAgain]: !!dontShowAgain,
                             })}
                             >
                                 <FormGroup check className={styles.formGroup}>
                                     <Label check className={styles.label}>
                                         <Checkbox
-                                            checked={checked}
+                                            value={checked}
                                             onChange={(e) => {
                                                 setChecked(e.target.checked)
                                             }}
                                         />
-                                        <Translate value="modal.confirm.dontShowAgain" />
+                                        <span>
+                                            Don&apos;t show this again
+                                        </span>
                                     </Label>
                                 </FormGroup>
                             </div>
@@ -120,7 +123,7 @@ const ConfirmDialog = (props: Props) => {
             >
                 {message}
             </Dialog>
-        </Modal>
+        </ModalPortal>
     )
 }
 

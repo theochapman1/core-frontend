@@ -1,8 +1,8 @@
 import React from 'react'
 import cx from 'classnames'
 
+import Text from '$ui/Text'
 import UiSizeConstraint from '../UiSizeConstraint'
-import TextControl from '$shared/components/TextControl'
 import styles from './Comment.pcss'
 
 export default class CommentModule extends React.PureComponent {
@@ -40,16 +40,19 @@ export default class CommentModule extends React.PureComponent {
     }
 
     render() {
+        const { isEditable } = this.props
         return (
             <UiSizeConstraint minWidth={100} minHeight={50}>
                 <div className={cx(this.props.className, styles.Comment)}>
-                    <TextControl
-                        commitEmpty
+                    <Text
+                        unstyled
+                        disabled={!isEditable}
                         flushHistoryOnBlur
+                        smartCommit
                         onCommit={this.onChange}
                         placeholder="Enter comment here…"
                         tag="textarea"
-                        value={this.getValue()}
+                        defaultValue={this.getValue()}
                     />
                 </div>
             </UiSizeConstraint>

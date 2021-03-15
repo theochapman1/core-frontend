@@ -1,512 +1,293 @@
 // @flow
 
-import React, { Component, Fragment } from 'react'
-import { connect } from 'react-redux'
-import { push } from 'react-router-redux'
-import moment from 'moment'
-import copy from 'copy-to-clipboard'
-import { Translate, I18n } from 'react-redux-i18n'
-import Helmet from 'react-helmet'
-import { Button } from 'reactstrap'
-import MediaQuery from 'react-responsive'
-import cx from 'classnames'
+import React, { Fragment, useEffect, useState, useCallback, useMemo } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
+import styled from 'styled-components'
 
-import type { Filter, SortOption } from '$userpages/flowtype/common-types'
-import type { Stream, StreamId } from '$shared/flowtype/stream-types'
-
-import SvgIcon from '$shared/components/SvgIcon'
-import links from '$shared/../links'
-import { getStreams, updateFilter, deleteStream, getStreamStatus, cancelStreamStatusFetch } from '$userpages/modules/userPageStreams/actions'
-import { selectStreams, selectFetching, selectFilter, selectHasMoreSearchResults } from '$userpages/modules/userPageStreams/selectors'
+import { CoreHelmet } from '$shared/components/Helmet'
+import {
+    getStreams,
+    clearStreamsList,
+} from '$userpages/modules/userPageStreams/actions'
+import { selectStreams, selectFetching, selectHasMoreSearchResults } from '$userpages/modules/userPageStreams/selectors'
 import { getFilters } from '$userpages/utils/constants'
-import Table from '$shared/components/Table'
-import DropdownActions from '$shared/components/DropdownActions'
-import Meatball from '$shared/components/Meatball'
-import StatusIcon from '$shared/components/StatusIcon'
+import Popover from '$shared/components/Popover'
 import Layout from '$userpages/components/Layout'
-import Search from '../../Header/Search'
-import Dropdown from '$shared/components/Dropdown'
-import confirmDialog from '$shared/utils/confirm'
-import { getResourcePermissions } from '$userpages/modules/permission/actions'
-import { selectFetchingPermissions, selectStreamPermissions } from '$userpages/modules/permission/selectors'
-import type { Permission, ResourceId } from '$userpages/flowtype/permission-types'
-import type { User } from '$shared/flowtype/user-types'
-import { selectUserData } from '$shared/modules/user/selectors'
-import ShareDialog from '$userpages/components/ShareDialog'
-import SnippetDialog from '$userpages/components/SnippetDialog/index'
-import { ProgrammingLanguages, NotificationIcon } from '$shared/utils/constants'
-import NoStreamsView from './NoStreams'
+import { resetResourcePermission } from '$userpages/modules/permission/actions'
 import DocsShortcuts from '$userpages/components/DocsShortcuts'
-import breakpoints from '$app/scripts/breakpoints'
-import Notification from '$shared/utils/Notification'
 import LoadMore from '$mp/components/LoadMore'
+import ListContainer from '$shared/components/Container/List'
+import Button from '$shared/components/Button'
+import useFilterSort from '$userpages/hooks/useFilterSort'
+import Sidebar from '$shared/components/Sidebar'
+import SidebarProvider, { useSidebar } from '$shared/components/Sidebar/SidebarProvider'
+import ShareSidebar from '$userpages/components/ShareSidebar'
+import { MD, LG } from '$shared/utils/styled'
+import { StreamList as StreamListComponent } from '$shared/components/List'
+import Notification from '$shared/utils/Notification'
+import { NotificationIcon } from '$shared/utils/constants'
+import { truncate } from '$shared/utils/text'
+import routes from '$routes'
 
-import styles from './streamsList.pcss'
+import Search from '../../Header/Search'
 
-const { lg } = breakpoints
+import SnippetDialog from './SnippetDialog'
+import Row from './Row'
+import NoStreamsView from './NoStreams'
+
+const DesktopOnlyButton = styled(Button)`
+    && {
+        display: none;
+    }
+
+    @media (min-width: ${LG}px) {
+        && {
+            display: inline-flex;
+        }
+    }
+`
 
 export const CreateStreamButton = () => (
-    <Button
-        color="primary"
-        className={styles.createStreamButton}
+    <DesktopOnlyButton
         tag={Link}
-        to={links.userpages.streamCreate}
+        to={routes.streams.new()}
     >
-        <Translate value="userpages.streams.createStream" />
-    </Button>
+        Create stream
+    </DesktopOnlyButton>
 )
 
-export type StateProps = {
-    user: ?User,
-    streams: Array<Stream>,
-    fetching: boolean,
-    filter: ?Filter,
-    fetchingPermissions: boolean,
-    permissions: {
-        [ResourceId]: Array<Permission>,
-    },
-    hasMoreResults: boolean,
+const StyledListContainer = styled(ListContainer)`
+    && {
+        padding: 0;
+        margin-bottom: 4em;
+    }
+
+    @media (min-width: ${MD}px) {
+        && {
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+    }
+
+    @media (min-width: ${LG}px) {
+        && {
+            margin-bottom: 0;
+        }
+    }
+`
+
+const TabletPopover = styled(Popover)`
+    @media (min-width: ${LG}px) {
+        display: none;
+    }
+`
+
+function StreamPageSidebar({ stream }) {
+    const sidebar = useSidebar()
+    const dispatch = useDispatch()
+
+    const streamId = stream && stream.id
+
+    const onClose = useCallback(() => {
+        sidebar.close()
+
+        if (streamId) {
+            dispatch(resetResourcePermission('STREAM', streamId))
+        }
+    }, [sidebar, dispatch, streamId])
+
+    return (
+        <Sidebar.WithErrorBoundary
+            isOpen={sidebar.isOpen()}
+            onClose={onClose}
+        >
+            {sidebar.isOpen('share') && (
+                <ShareSidebar
+                    sidebarName="share"
+                    resourceTitle={stream && truncate(stream.id)}
+                    resourceType="STREAM"
+                    resourceId={stream && stream.id}
+                    onClose={onClose}
+                />
+            )}
+        </Sidebar.WithErrorBoundary>
+    )
 }
 
-export type DispatchProps = {
-    getStreams: (replace?: boolean) => void,
-    updateFilter: (filter: Filter) => void,
-    showStream: (StreamId) => void,
-    deleteStream: (StreamId) => void,
-    copyToClipboard: (string) => void,
-    getStreamPermissions: (id: StreamId) => void,
-    refreshStreamStatus: (id: StreamId) => Promise<void>,
-    cancelStreamStatusFetch: () => void,
-}
-
-type Props = StateProps & DispatchProps
-
-const getSortOptions = (): Array<SortOption> => {
-    const filters = getFilters()
-    return [
-        filters.RECENT,
+const StreamList = () => {
+    const filters = useMemo(() => getFilters('stream'), [])
+    const allSortOptions = useMemo(() => ([
+        filters.RECENT_DESC,
+        filters.RECENT_ASC,
         filters.NAME_ASC,
         filters.NAME_DESC,
-    ]
-}
+    ]), [filters])
+    const dropdownSortOptions = useMemo(() => ([
+        filters.RECENT_DESC,
+        filters.NAME_ASC,
+        filters.NAME_DESC,
+    ]), [filters])
 
-const Dialogs = {
-    SHARE: 'share',
-    SNIPPET: 'snippet',
-}
+    const {
+        defaultFilter,
+        filter,
+        setSearch,
+        setSort,
+        resetFilter,
+    } = useFilterSort(allSortOptions)
+    const [dialogTargetStream, setDialogTargetStream] = useState(null)
+    const dispatch = useDispatch()
+    const streams = useSelector(selectStreams)
+    const fetching = useSelector(selectFetching)
+    const hasMoreResults = useSelector(selectHasMoreSearchResults)
 
-type State = {
-    dialogTargetStream: ?Stream,
-    activeDialog?: $Values<typeof Dialogs> | null,
-}
+    useEffect(() => () => {
+        dispatch(clearStreamsList())
+    }, [dispatch])
 
-const getSnippets = (streamId: StreamId) => ({
-    // $FlowFixMe It's alright but Flow doesn't get it
-    [ProgrammingLanguages.JAVASCRIPT]: String.raw`const StreamrClient = require('streamr-client')
-
-const streamr = new StreamrClient({
-    auth: {
-        apiKey: 'YOUR-API-KEY',
-    },
-})
-
-// Subscribe to a stream
-streamr.subscribe({
-    stream: '${streamId}'
-},
-(message, metadata) => {
-    // Do something with the message here!
-    console.log(message)
-}`,
-    // $FlowFixMe
-    [ProgrammingLanguages.JAVA]: String.raw`StreamrClient client = new StreamrClient();
-Stream stream = client.getStream("${streamId}");
-
-Subscription sub = client.subscribe(stream, new MessageHandler() {
-    @Override
-    void onMessage(Subscription s, StreamMessage message) {
-        // Here you can react to the latest message
-        System.out.println(message.getPayload().toString());
-    }
-});`,
-})
-
-class StreamList extends Component<Props, State> {
-    defaultFilter = getSortOptions()[0].filter
-
-    state = {
-        dialogTargetStream: undefined,
-        activeDialog: undefined,
-    }
-
-    componentDidMount() {
-        const { filter, updateFilter, getStreams } = this.props
-
-        // Set default filter if not selected
-        if (!filter) {
-            updateFilter(this.defaultFilter)
-        }
-        getStreams()
-    }
-
-    componentWillUnmount() {
-        this.props.cancelStreamStatusFetch()
-    }
-
-    onSearchChange = (value: string) => {
-        const { filter, updateFilter, getStreams } = this.props
-        const newFilter = {
-            ...filter,
-            search: value,
-        }
-        updateFilter(newFilter)
-        getStreams(true)
-    }
-
-    onSortChange = (sortOptionId) => {
-        const { filter, updateFilter, getStreams } = this.props
-        const sortOption = getSortOptions().find((opt) => opt.filter.id === sortOptionId)
-
-        if (sortOption) {
-            const newFilter = {
-                search: filter && filter.search,
-                ...sortOption.filter,
-            }
-            updateFilter(newFilter)
-            getStreams(true)
-        }
-    }
-
-    resetFilter = () => {
-        const { updateFilter, getStreams } = this.props
-        updateFilter({
-            ...this.defaultFilter,
-            search: '',
-        })
-        getStreams(true)
-    }
-
-    confirmDeleteStream = async (stream: Stream) => {
-        const confirmed = await confirmDialog('stream', {
-            title: I18n.t('userpages.streams.delete.confirmTitle'),
-            message: I18n.t('userpages.streams.delete.confirmMessage'),
-            acceptButton: {
-                title: I18n.t('userpages.streams.delete.confirmButton'),
-                color: 'danger',
-            },
-            centerButtons: true,
-            dontShowAgain: false,
-        })
-
-        if (confirmed) {
-            this.props.deleteStream(stream.id)
-        }
-    }
-
-    hasWritePermission = (id: StreamId) => {
-        const { fetchingPermissions, permissions, user } = this.props
-
-        return (
-            !fetchingPermissions &&
-            !!user &&
-            permissions[id] &&
-            permissions[id].find((p: Permission) => p.user === user.username && p.operation === 'write') !== undefined
-        )
-    }
-
-    onOpenShareDialog = (stream: Stream) => {
-        this.setState({
-            dialogTargetStream: stream,
-            activeDialog: Dialogs.SHARE,
-        })
-    }
-
-    onCloseDialog = () => {
-        this.setState({
-            dialogTargetStream: null,
-            activeDialog: null,
-        })
-    }
-
-    onOpenSnippetDialog = (stream: Stream) => {
-        this.setState({
-            dialogTargetStream: stream,
-            activeDialog: Dialogs.SNIPPET,
-        })
-    }
-
-    onStreamRowClick = (id: StreamId) => {
-        this.props.showStream(id)
-    }
-
-    onRefreshStatus = (id: StreamId) => {
-        this.props.refreshStreamStatus(id)
-            .then(() => {
-                Notification.push({
-                    title: I18n.t('userpages.streams.actions.refreshSuccess'),
-                    icon: NotificationIcon.CHECKMARK,
-                })
-            }, () => {
-                Notification.push({
-                    title: I18n.t('userpages.streams.actions.refreshError'),
-                    icon: NotificationIcon.ERROR,
-                })
+    const fetchStreams = useCallback(async (...args) => {
+        try {
+            await dispatch(getStreams(...args))
+        } catch (e) {
+            Notification.push({
+                title: e.message,
+                icon: NotificationIcon.ERROR,
             })
-    }
+        }
+    }, [dispatch])
 
-    onCopyId = (id: StreamId) => {
-        this.props.copyToClipboard(id)
-
-        Notification.push({
-            title: I18n.t('userpages.streams.actions.idCopied'),
-            icon: NotificationIcon.CHECKMARK,
-        })
-    }
-
-    render() {
-        const {
-            fetching,
-            streams,
-            showStream,
+    useEffect(() => {
+        fetchStreams({
+            replace: true,
             filter,
-            hasMoreResults,
-            getStreams,
-        } = this.props
-        const timezone = moment.tz.guess()
-        const { dialogTargetStream, activeDialog } = this.state
-        const nowTime = moment.tz(Date.now(), timezone)
+        })
+    }, [fetchStreams, filter])
 
-        return (
-            <Layout
-                headerAdditionalComponent={<CreateStreamButton />}
-                headerSearchComponent={
-                    <Search
-                        placeholder={I18n.t('userpages.streams.filterStreams')}
-                        value={(filter && filter.search) || ''}
-                        onChange={this.onSearchChange}
-                    />
-                }
-                headerFilterComponent={
-                    <Dropdown
-                        title={I18n.t('userpages.filter.sortBy')}
-                        onChange={this.onSortChange}
-                        selectedItem={(filter && filter.id) || this.defaultFilter.id}
-                    >
-                        {getSortOptions().map((s) => (
-                            <Dropdown.Item key={s.filter.id} value={s.filter.id}>
-                                {s.displayName}
-                            </Dropdown.Item>
-                        ))}
-                    </Dropdown>
-                }
-                loading={fetching}
-            >
-                <Helmet title={`Streamr Core | ${I18n.t('userpages.title.streams')}`} />
-                {!!dialogTargetStream && activeDialog === Dialogs.SHARE && (
-                    <ShareDialog
-                        resourceTitle={dialogTargetStream.name}
-                        resourceType="STREAM"
-                        resourceId={dialogTargetStream.id}
-                        onClose={this.onCloseDialog}
+    const [activeSort, setActiveSort] = useState(undefined)
+
+    const sidebar = useSidebar()
+
+    const onOpenShareDialog = useCallback((stream) => {
+        setDialogTargetStream(stream)
+        sidebar.open('share')
+    }, [sidebar])
+
+    const onDropdownSort = useCallback((value) => {
+        setActiveSort(value)
+        setSort(value)
+    }, [setSort])
+
+    const onHeaderSortUpdate = useCallback((asc, desc) => {
+        setActiveSort((prevFilter) => {
+            let nextSort
+
+            if (![asc, desc].includes(prevFilter)) {
+                nextSort = asc
+            } else if (prevFilter === asc) {
+                nextSort = desc
+            }
+
+            setSort(nextSort || (defaultFilter && defaultFilter.id))
+            return nextSort
+        })
+    }, [setActiveSort, setSort, defaultFilter])
+
+    return (
+        <Layout
+            headerAdditionalComponent={<CreateStreamButton />}
+            headerSearchComponent={
+                <Search.Active
+                    placeholder="Filter streams"
+                    value={(filter && filter.search) || ''}
+                    onChange={setSearch}
+                />
+            }
+            headerFilterComponent={
+                <TabletPopover
+                    title="Sort by"
+                    type="uppercase"
+                    caret="svg"
+                    activeTitle
+                    onChange={onDropdownSort}
+                    selectedItem={(filter && filter.id) || (defaultFilter && defaultFilter.id)}
+                    menuProps={{
+                        right: true,
+                    }}
+                >
+                    {dropdownSortOptions.map((s) => (
+                        <Popover.Item key={s.filter.id} value={s.filter.id}>
+                            {s.displayName}
+                        </Popover.Item>
+                    ))}
+                </TabletPopover>
+            }
+            loading={fetching}
+        >
+            <CoreHelmet title="Streams" />
+            <StyledListContainer>
+                {!fetching && streams && streams.length <= 0 && (
+                    <NoStreamsView
+                        hasFilter={!!filter && (!!filter.search || !!filter.key)}
+                        filter={filter}
+                        onResetFilter={resetFilter}
                     />
                 )}
-                {!!dialogTargetStream && activeDialog === Dialogs.SNIPPET && (
-                    <SnippetDialog
-                        snippets={getSnippets(dialogTargetStream.id)}
-                        onClose={this.onCloseDialog}
-                    />
-                )}
-                <div className={cx('container', styles.streamListTabletContainer)}>
-                    {!fetching && streams && streams.length <= 0 && (
-                        <NoStreamsView
-                            hasFilter={!!filter && (!!filter.search || !!filter.key)}
-                            filter={filter}
-                            onResetFilter={this.resetFilter}
+                {streams && streams.length > 0 && (
+                    <Fragment>
+                        <StreamListComponent>
+                            <StreamListComponent.Header>
+                                <StreamListComponent.HeaderItem
+                                    asc={filters.NAME_ASC.filter.id}
+                                    desc={filters.NAME_DESC.filter.id}
+                                    active={activeSort}
+                                    onClick={onHeaderSortUpdate}
+                                >
+                                    Name
+                                </StreamListComponent.HeaderItem>
+                                <StreamListComponent.HeaderItem>
+                                    Description
+                                </StreamListComponent.HeaderItem>
+                                <StreamListComponent.HeaderItem
+                                    asc={filters.RECENT_ASC.filter.id}
+                                    desc={filters.RECENT_DESC.filter.id}
+                                    active={activeSort}
+                                    onClick={onHeaderSortUpdate}
+                                >
+                                    Updated
+                                </StreamListComponent.HeaderItem>
+                                <StreamListComponent.HeaderItem>
+                                    Last Data
+                                </StreamListComponent.HeaderItem>
+                                <StreamListComponent.HeaderItem center>
+                                    Status
+                                </StreamListComponent.HeaderItem>
+                            </StreamListComponent.Header>
+                            {streams.map((stream) => (
+                                <Row
+                                    key={stream.id}
+                                    onShareClick={onOpenShareDialog}
+                                    stream={stream}
+                                />
+                            ))}
+                        </StreamListComponent>
+                        <LoadMore
+                            hasMoreSearchResults={!fetching && hasMoreResults}
+                            onClick={() => fetchStreams()}
+                            preserveSpace
                         />
-                    )}
-                    {streams && streams.length > 0 && (
-                        <Fragment>
-                            <MediaQuery minWidth={lg.min}>
-                                <div className={cx(styles.streamsTable, {
-                                    [styles.streamsTableLoadingMore]: !!(fetching && hasMoreResults),
-                                })}
-                                >
-                                    <Table>
-                                        <thead>
-                                            <tr>
-                                                <th><Translate value="userpages.streams.list.name" /></th>
-                                                <th><Translate value="userpages.streams.list.description" /></th>
-                                                <th><Translate value="userpages.streams.list.updated" /></th>
-                                                <th><Translate value="userpages.streams.list.lastData" /></th>
-                                                <th className={styles.statusColumn}><Translate value="userpages.streams.list.status" /></th>
-                                                <th className={styles.menuColumn} />
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {streams.map((stream) => (
-                                                <tr
-                                                    key={stream.id}
-                                                    className={styles.streamRow}
-                                                    onClick={() => this.onStreamRowClick(stream.id)}
-                                                >
-                                                    <Table.Th noWrap title={stream.requireSignedData ? 'Signed stream' : stream.name}>
-                                                        {stream.name}
-                                                        {stream.requireSignedData &&
-                                                        <SvgIcon
-                                                            name="signedTick"
-                                                            className={styles.signedTick}
-                                                        />}
-                                                    </Table.Th>
-                                                    <Table.Td noWrap title={stream.description}>{stream.description}</Table.Td>
-                                                    <Table.Td noWrap>
-                                                        {stream.lastUpdated && (
-                                                            moment.min(moment.tz(stream.lastUpdated, timezone), nowTime).fromNow()
-                                                        )}
-                                                    </Table.Td>
-                                                    <Table.Td>
-                                                        {stream.lastData && (
-                                                            moment.min(moment.tz(stream.lastData, timezone), nowTime).fromNow()
-                                                        )}
-                                                    </Table.Td>
-                                                    <Table.Td className={styles.statusColumn}>
-                                                        <StatusIcon status={stream.streamStatus} />
-                                                    </Table.Td>
-                                                    <Table.Td
-                                                        onClick={(event) => event.stopPropagation()}
-                                                        className={styles.menuColumn}
-                                                    >
-                                                        <DropdownActions
-                                                            title={<Meatball alt={I18n.t('userpages.streams.actions')} />}
-                                                            noCaret
-                                                            menuProps={{
-                                                                modifiers: {
-                                                                    offset: {
-                                                                        // Make menu aligned to the right.
-                                                                        // See https://popper.js.org/popper-documentation.html#modifiers..offset
-                                                                        offset: '-100%p + 100%',
-                                                                    },
-                                                                },
-                                                            }}
-                                                        >
-                                                            <DropdownActions.Item onClick={() => showStream(stream.id)}>
-                                                                <Translate value="userpages.streams.actions.editStream" />
-                                                            </DropdownActions.Item>
-                                                            <DropdownActions.Item onClick={() => this.onCopyId(stream.id)}>
-                                                                <Translate value="userpages.streams.actions.copyId" />
-                                                            </DropdownActions.Item>
-                                                            <DropdownActions.Item onClick={() => this.onOpenSnippetDialog(stream)}>
-                                                                <Translate value="userpages.streams.actions.copySnippet" />
-                                                            </DropdownActions.Item>
-                                                            <DropdownActions.Item
-                                                                onClick={() => this.onOpenShareDialog(stream)}
-                                                            >
-                                                                <Translate value="userpages.streams.actions.share" />
-                                                            </DropdownActions.Item>
-                                                            <DropdownActions.Item onClick={() => this.onRefreshStatus(stream.id)}>
-                                                                <Translate value="userpages.streams.actions.refresh" />
-                                                            </DropdownActions.Item>
-                                                            <DropdownActions.Item
-                                                                onClick={() => this.confirmDeleteStream(stream)}
-                                                            >
-                                                                <Translate value="userpages.streams.actions.delete" />
-                                                            </DropdownActions.Item>
-                                                        </DropdownActions>
-                                                    </Table.Td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </Table>
-                                    <LoadMore
-                                        hasMoreSearchResults={!fetching && hasMoreResults}
-                                        onClick={() => getStreams()}
-                                    />
-                                </div>
-                            </MediaQuery>
-                            <MediaQuery maxWidth={lg.min}>
-                                <div className={cx(styles.streamsTable, {
-                                    [styles.streamsTableLoadingMore]: !!(fetching && hasMoreResults),
-                                })}
-                                >
-                                    <Table>
-                                        <tbody>
-                                            {streams.map((stream) => (
-                                                <tr
-                                                    key={stream.id}
-                                                    className={styles.streamRow}
-                                                    onClick={() => this.onStreamRowClick(stream.id)}
-                                                >
-                                                    <Table.Td
-                                                        title={stream.requireSignedData ? 'Signed stream' : stream.name}
-                                                        className={styles.tabletStreamRow}
-                                                    >
-                                                        <div className={styles.tabletStreamRowContainer}>
-                                                            <div>
-                                                                <span className={styles.tabletStreamName}>
-                                                                    {stream.name}
-                                                                    {stream.requireSignedData &&
-                                                                    <SvgIcon
-                                                                        name="signedTick"
-                                                                        className={styles.signedTick}
-                                                                    />}
-                                                                </span>
-                                                                <span className={styles.tabletStreamDescription}>
-                                                                    {stream.description}
-                                                                </span>
-                                                                <span className={styles.lastUpdatedStreamMobile}>
-                                                                    {stream.lastUpdated && (
-                                                                        moment.min(moment.tz(stream.lastUpdated, timezone), nowTime).fromNow()
-                                                                    )}
-                                                                </span>
-                                                            </div>
-                                                            <div>
-                                                                <span className={styles.lastUpdatedStreamTablet}>
-                                                                    {stream.lastUpdated && (
-                                                                        moment.min(moment.tz(stream.lastUpdated, timezone), nowTime).fromNow()
-                                                                    )}
-                                                                </span>
-                                                                <StatusIcon status={stream.streamStatus} className={styles.tabletStatusStreamIcon} />
-                                                            </div>
-                                                        </div>
-                                                    </Table.Td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </Table>
-                                    <LoadMore
-                                        hasMoreSearchResults={!fetching && hasMoreResults}
-                                        onClick={() => getStreams()}
-                                    />
-                                </div>
-                            </MediaQuery>
-                        </Fragment>
-                    )}
-                </div>
-                <DocsShortcuts />
-            </Layout>
-        )
-    }
+                    </Fragment>
+                )}
+            </StyledListContainer>
+            <SnippetDialog />
+            <StreamPageSidebar stream={dialogTargetStream} />
+            <DocsShortcuts />
+        </Layout>
+    )
 }
 
-const mapStateToProps = (state) => ({
-    user: selectUserData(state),
-    streams: selectStreams(state),
-    fetching: selectFetching(state),
-    filter: selectFilter(state),
-    fetchingPermissions: selectFetchingPermissions(state),
-    permissions: selectStreamPermissions(state),
-    hasMoreResults: selectHasMoreSearchResults(state),
-})
-
-const mapDispatchToProps = (dispatch) => ({
-    getStreams: (replace: boolean = false) => dispatch(getStreams(replace)),
-    updateFilter: (filter) => dispatch(updateFilter(filter)),
-    showStream: (id: StreamId) => dispatch(push(`${links.userpages.streamShow}/${id}`)),
-    deleteStream: (id: StreamId) => dispatch(deleteStream(id)),
-    copyToClipboard: (text) => copy(text),
-    getStreamPermissions: (id: StreamId) => dispatch(getResourcePermissions('STREAM', id)),
-    refreshStreamStatus: (id: StreamId) => dispatch(getStreamStatus(id)),
-    cancelStreamStatusFetch,
-})
-
-export default connect(mapStateToProps, mapDispatchToProps)(StreamList)
+export default (props: any) => (
+    <SidebarProvider>
+        <StreamList {...props} />
+    </SidebarProvider>
+)

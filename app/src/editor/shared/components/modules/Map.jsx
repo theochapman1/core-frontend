@@ -8,9 +8,9 @@ import remove from 'lodash/remove'
 import L from 'leaflet'
 import type { LatLngBounds } from 'react-leaflet'
 
+import { isRunning } from '$editor/canvas/state'
 import Map, { type Marker, type TracePoint } from '../Map/Map'
 import ModuleSubscription from '../ModuleSubscription'
-import { isRunning } from '$editor/canvas/state'
 
 import styles from './Map.pcss'
 
@@ -33,6 +33,7 @@ type State = {
 type Message = {
     t: string,
     color: string,
+    label?: string,
     id: string,
     lat: number,
     lng: number,
@@ -158,9 +159,7 @@ export default class MapModule extends React.PureComponent<Props, State> {
             if (msg.pointList && msg.pointList.length > 0) {
                 const { pointList } = msg
 
-                // $FlowFixMe Object.values() returns mixed[]
-                const tracePoints: Array<Array<TracePoint>> = Object
-                    .values(this.positionHistory)
+                const tracePoints: Array<Array<TracePoint>> = ((Object.values(this.positionHistory): any): Array<Array<TracePoint>>)
                 tracePoints.forEach((points) => {
                     remove(points, (p: TracePoint) => pointList.includes(p.id))
                 })
@@ -186,15 +185,14 @@ export default class MapModule extends React.PureComponent<Props, State> {
         }
     }
 
-    getMarkerFromMessage = (msg: Message): Marker => (
-        {
-            id: msg.id,
-            lat: msg.lat,
-            long: msg.lng,
-            rotation: msg.dir,
-            previousPositions: [],
-        }
-    )
+    getMarkerFromMessage = (msg: Message): Marker => ({
+        id: msg.id,
+        label: msg.label,
+        lat: msg.lat,
+        long: msg.lng,
+        rotation: msg.dir,
+        previousPositions: [],
+    })
 
     addTracePoint = (id: string, lat: number, long: number, tracePointId: string) => {
         let posArray = this.positionHistory[id]
@@ -239,6 +237,7 @@ export default class MapModule extends React.PureComponent<Props, State> {
 
     onViewportChanged = (centerLat: number, centerLong: number, zoom: number) => {
         const { module, api } = this.props
+        if (!api) { return }
         const nextModule = {
             ...module,
             options: {
@@ -269,9 +268,8 @@ export default class MapModule extends React.PureComponent<Props, State> {
         this.queuedMarkers = {}
 
         this.setState((state) => {
-            const markers = { ...state.markers }
-            // $FlowFixMe Object.values() returns mixed[]
-            Object.values(queuedMarkers).forEach((m: Marker) => {
+            const markers = { ...state.markers };
+            ((Object.values(queuedMarkers): any): Array<Marker>).forEach((m: Marker) => {
                 const marker = markers[m.id]
                 if (marker) {
                     marker.lat = m.lat

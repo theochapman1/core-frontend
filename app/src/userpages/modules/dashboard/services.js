@@ -1,26 +1,36 @@
-// @flow
-
 import { get, post, put, del } from '$shared/utils/api'
-import { formatApiUrl } from '$shared/utils/url'
-import type { ApiResult } from '$shared/flowtype/common-types'
-import type { DashboardId, Dashboard, DashboardList } from '$userpages/flowtype/dashboard-types'
-import type { Permission } from '$userpages/flowtype/permission-types'
+import routes from '$routes'
 
-export const getDashboards = (params: any): ApiResult<DashboardList> => get(formatApiUrl('dashboards'), { params })
-
-export const getDashboard = (id: DashboardId): ApiResult<Dashboard> => get(formatApiUrl('dashboards', id))
-
-export const deleteDashboard = (id: DashboardId): ApiResult<null> => del(formatApiUrl('dashboards', id))
-
-export const getMyDashboardPermissions = (id: DashboardId): ApiResult<Array<Permission>> =>
-    get(formatApiUrl('dashboards', id, 'permissions', 'me'))
-
-export const postDashboard = (dashboard: Dashboard): ApiResult<Dashboard> => post(formatApiUrl('dashboards'), {
-    ...dashboard,
-    layout: JSON.stringify(dashboard.layout),
+export const getDashboards = (params) => get({
+    url: routes.api.dashboards.index(params),
 })
 
-export const putDashboard = (id: DashboardId, dashboard: Dashboard): ApiResult<Dashboard> => put(formatApiUrl('dashboards', id), {
-    ...dashboard,
-    layout: JSON.stringify(dashboard.layout),
+export const getDashboard = (id) => get({
+    url: routes.api.dashboards.show({
+        id,
+    }),
+})
+
+export const deleteDashboard = (id) => del({
+    url: routes.api.dashboards.show({
+        id,
+    }),
+})
+
+export const postDashboard = (dashboard) => post({
+    url: routes.api.dashboards.index(),
+    data: {
+        ...dashboard,
+        layout: JSON.stringify(dashboard.layout),
+    },
+})
+
+export const putDashboard = (id, dashboard) => put({
+    url: routes.api.dashboards.show({
+        id,
+    }),
+    data: {
+        ...dashboard,
+        layout: JSON.stringify(dashboard.layout),
+    },
 })

@@ -4,10 +4,10 @@ import React from 'react'
 import cx from 'classnames'
 import throttle from 'lodash/throttle'
 
+import Text from '$ui/Text'
 import UiSizeConstraint from '../UiSizeConstraint'
 import ModuleSubscription from '../ModuleSubscription'
 
-import TextControl from '$shared/components/TextControl'
 import styles from './TextField.pcss'
 
 export default class TextFieldModule extends React.Component {
@@ -59,7 +59,7 @@ export default class TextFieldModule extends React.Component {
     }
 
     render() {
-        const { isActive } = this.props
+        const { isActive, hasInteractPermission } = this.props
         const value = this.getValue()
         return (
             <UiSizeConstraint minWidth={150} minHeight={75}>
@@ -70,15 +70,22 @@ export default class TextFieldModule extends React.Component {
                         onMessage={this.onMessage}
                         onActiveChange={this.onActiveChange}
                     />
-                    <TextControl
-                        commitEmpty
+                    <Text
+                        unstyled
                         flushHistoryOnBlur
                         onCommit={this.onChange}
                         placeholder="Enter your text here"
+                        smartCommit
                         tag="textarea"
-                        value={value}
+                        defaultValue={value}
+                        disabled={!hasInteractPermission}
                     />
-                    <button type="button" className={styles.button} onClick={this.onClick} disabled={!isActive}>
+                    <button
+                        type="button"
+                        className={styles.button}
+                        onClick={this.onClick}
+                        disabled={!hasInteractPermission || !isActive}
+                    >
                         Send
                     </button>
                 </div>

@@ -1,5 +1,4 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'development' // set a default NODE_ENV
-
 const path = require('path')
 const webpack = require('webpack')
 const MiniCssExtractPlugin = require('mini-css-extract-plugin')
@@ -10,7 +9,7 @@ const ImageminPlugin = require('imagemin-webpack-plugin').default
 const StyleLintPlugin = require('stylelint-webpack-plugin')
 const CleanWebpackPlugin = require('clean-webpack-plugin')
 const { UnusedFilesWebpackPlugin } = require('unused-files-webpack-plugin')
-const cssProcessor = require('cssnano')
+const cssProcessor = require('clean-css')
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 const GitRevisionPlugin = require('git-revision-webpack-plugin')
@@ -38,6 +37,8 @@ module.exports = {
     entry: [
         // forcibly print diagnostics upfront
         path.resolve(root, 'src', 'shared', 'utils', 'diagnostics.js'),
+        // always load setup first
+        path.resolve(root, 'src', 'setup.js'),
         path.resolve(root, 'src', 'index.jsx'),
     ],
     output: {
@@ -51,7 +52,7 @@ module.exports = {
         strictExportPresence: true,
         rules: [
             {
-                test: /\.mdx?$/,
+                test: /\.mdx$/,
                 use: [
                     {
                         loader: 'babel-loader',
@@ -85,12 +86,25 @@ module.exports = {
                     compact: isProduction(),
                 },
             },
+            {
+                test: /\.md$/,
+                loader: 'raw-loader',
+            },
             // Images are put to <BASE_URL>/images
             {
                 test: /\.(png|jpg|jpeg|svg)$/,
                 loader: 'file-loader',
                 options: {
                     name: 'images/[name]_[hash:8].[ext]',
+                    publicPath,
+                },
+            },
+            // Videos are put to <BASE_URL>/videos
+            {
+                test: /\.(mp4)$/,
+                loader: 'file-loader',
+                options: {
+                    name: 'videos/[name]_[hash:8].[ext]',
                     publicPath,
                 },
             },
@@ -139,7 +153,10 @@ module.exports = {
             // po-loader turns .po file into json
             {
                 test: /\.po$/,
-                use: '@streamr/po-loader',
+                loader: '@streamr/po-loader',
+                options: {
+                    keyseparator: '.',
+                },
             },
         ],
     },
@@ -169,6 +186,11 @@ module.exports = {
             SENTRY_ENVIRONMENT: process.env.SENTRY_ENVIRONMENT || '',
             SENTRY_DSN: process.env.SENTRY_DSN || '',
             VERSION: process.env.VERSION || '',
+            TRAVIS_TAG: process.env.TRAVIS_TAG || '',
+            TRAVIS_PULL_REQUEST_BRANCH: process.env.TRAVIS_PULL_REQUEST_BRANCH || '',
+            TRAVIS_BRANCH: process.env.TRAVIS_BRANCH || '',
+            TRAVIS_COMMIT: process.env.TRAVIS_COMMIT || '',
+            TRAVIS_PULL_REQUEST_SHA: process.env.TRAVIS_PULL_REQUEST_SHA || '',
         }),
         new webpack.EnvironmentPlugin(loadedDotenv),
         ...(analyze ? [
@@ -177,6 +199,8 @@ module.exports = {
                 openAnalyzer: false,
             }),
         ] : []),
+        // Ignore all locale files of moment.js
+        new webpack.IgnorePlugin(/^\.\/locale$/, /moment$/),
     ].concat(isProduction() ? [
         new CleanWebpackPlugin([dist]),
         // Production plugins
@@ -194,7 +218,7 @@ module.exports = {
             canPrint: true,
         }),
         new ImageminPlugin({
-            disable: !isProduction(), // Disable during development
+            disable: true,
             pngquant: {
                 quality: '50-75',
             },
@@ -209,6 +233,7 @@ module.exports = {
                 'src/userpages/**/*.*',
                 'src/editor/**/*.*',
                 'src/docs/**/*.*',
+                'src/*.*',
             ].filter(Boolean),
             globOptions: {
                 ignore: [
@@ -227,12 +252,14 @@ module.exports = {
                     // skip conditional stubs
                     '**/stub.jsx',
                     // skip stories
-                    '**/*.stories.js',
-                    '**/*.stories.jsx',
+                    '**/*.stories.*',
+                    // and files used by stories
+                    'src/editor/canvas/components/ModuleRenderer/modules.js',
                     // skip MD documentation
                     'src/docs/docsEditingGuide.md',
                     // skip sketch files
                     '**/*.sketch',
+                    'src/docs/scripts/*.*',
                 ],
             },
         }),
@@ -263,6 +290,7 @@ module.exports = {
     devServer: {
         historyApiFallback: {
             index: publicPath,
+            disableDotRule: true,
         },
         hot: true,
         inline: true,
@@ -286,13 +314,13 @@ module.exports = {
             $auth: path.resolve(__dirname, 'src/auth/'),
             $docs: path.resolve(__dirname, 'src/docs/'),
             $mp: path.resolve(__dirname, 'src/marketplace/'),
-            $newdocs: path.resolve(__dirname, 'src/newdocs/'),
             $userpages: path.resolve(__dirname, 'src/userpages/'),
             $shared: path.resolve(__dirname, 'src/shared/'),
             $editor: path.resolve(__dirname, 'src/editor/'),
             $testUtils: path.resolve(__dirname, 'test/test-utils/'),
             $routes: path.resolve(__dirname, 'src/routes'),
             $utils: path.resolve(__dirname, 'src/utils/'),
+            $ui: path.resolve(__dirname, 'src/shared/components/Ui'),
             // When duplicate bundles point to different places.
             '@babel/runtime': path.resolve(__dirname, 'node_modules/@babel/runtime'),
             'bn.js': path.resolve(__dirname, 'node_modules/bn.js'),
@@ -306,6 +334,9 @@ module.exports = {
             'strict-uri-encode': path.resolve(__dirname, 'node_modules/strict-uri-encode'),
             warning: path.resolve(__dirname, 'node_modules/warning'),
             underscore: path.resolve(__dirname, 'node_modules/underscore'),
+            react: path.resolve(__dirname, 'node_modules/react'),
+            'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
+            'styled-components': path.resolve(__dirname, 'node_modules/styled-components'),
         },
     },
 }

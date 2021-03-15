@@ -1,151 +1,87 @@
-// @flow
-
-import React, { Component, Fragment } from 'react'
-import { I18n, Translate } from 'react-redux-i18n'
-import copy from 'copy-to-clipboard'
-
-import Modal from '$shared/components/Modal'
+import React, { useState, useCallback, useRef } from 'react'
+import { CodeSnippet, titleize } from '@streamr/streamr-layout'
+import ModalPortal from '$shared/components/ModalPortal'
 import Dialog from '$shared/components/Dialog'
 import Buttons from '$shared/components/Buttons'
-import DropdownActions from '$shared/components/DropdownActions'
-import CodeSnippet from '$shared/components/CodeSnippet'
+import Popover from '$shared/components/Popover'
 
-import { ProgrammingLanguages, StreamrClientRepositories } from '$shared/utils/constants'
+import { StreamrClientRepositories } from '$shared/utils/constants'
+import useCopy from '$shared/hooks/useCopy'
 
 import styles from './snippetDialog.pcss'
 
-type Language = $Values<typeof ProgrammingLanguages>
+const SnippetDialog = ({ snippets, onClose }) => {
+    const { isCopied, copy } = useCopy()
 
-type GivenProps = {
-    snippets: {
-        [Language]: string,
-    },
-    onClose: () => void,
-}
+    const [selectedLanguage, setSelectedLanguage] = useState(Object.keys(snippets)[0])
 
-type Props = GivenProps
+    const codeRef = useRef({})
 
-type State = {
-    selectedLanguage?: Language,
-    copied: boolean,
-}
+    const onCopy = useCallback(() => {
+        copy(codeRef.current[selectedLanguage] || '')
+    }, [selectedLanguage, copy])
 
-const SnippetLanguageMappings = {
-    [ProgrammingLanguages.JAVASCRIPT]: 'javascript',
-    [ProgrammingLanguages.JAVA]: 'java',
-}
-
-export class SnippetDialog extends Component<Props, State> {
-    state = {
-        selectedLanguage: undefined,
-        copied: false,
-    }
-
-    timeout: ?TimeoutID = null
-
-    componentWillUnmount() {
-        if (this.timeout) {
-            clearTimeout(this.timeout)
-        }
-    }
-
-    onSave = () => {}
-
-    onSelectLanguage = (language: Language) => {
-        this.setState({
-            selectedLanguage: language,
-            copied: false,
-        })
-    }
-
-    onCopy = () => {
-        const { snippets } = this.props
-        const snippetLanguages = Object.keys(snippets)
-        const selectedLanguage = this.state.selectedLanguage || (snippetLanguages.length > 0 && snippetLanguages[0])
-
-        if (selectedLanguage) {
-            copy(snippets[selectedLanguage])
-
-            this.setState({
-                copied: true,
-            })
-            if (this.timeout) {
-                clearTimeout(this.timeout)
-            }
-            this.timeout = setTimeout(() => {
-                this.setState({
-                    copied: false,
-                })
-            }, 3000)
-        }
-    }
-
-    render() {
-        const { snippets, onClose } = this.props
-        const snippetLanguages = Object.keys(snippets)
-        const selectedLanguage = this.state.selectedLanguage || (snippetLanguages.length > 0 && snippetLanguages[0])
-
-        return (
-            <Modal>
-                <Dialog
-                    contentClassName={styles.content}
-                    title={I18n.t('modal.copySnippet.defaultTitle')}
-                    onClose={onClose}
-                    showCloseIcon
-                >
-                    {selectedLanguage && (
-                        <Fragment>
-                            <CodeSnippet
-                                language={SnippetLanguageMappings[selectedLanguage]}
-                                showLineNumbers
-                                className={styles.codeSnippet}
+    return (
+        <ModalPortal>
+            <Dialog
+                contentClassName={styles.content}
+                title="Copy Snippet"
+                onClose={onClose}
+                showCloseIcon
+                renderActions={() => (selectedLanguage ? (
+                    <div className={styles.footer}>
+                        <div className={styles.language}>
+                            <Popover title={
+                                <span className={styles.languageTitle}>
+                                    {titleize(selectedLanguage)}
+                                </span>
+                            }
                             >
-                                {snippets[selectedLanguage]}
-                            </CodeSnippet>
-                            <div className={styles.footer}>
-                                <hr className={styles.footerDivider} />
-                                <div className={styles.language}>
-                                    <DropdownActions title={
-                                        <span className={styles.languageTitle}>{selectedLanguage}</span>
-                                    }
+                                {Object.keys(snippets).map((language) => (
+                                    <Popover.Item
+                                        key={language}
+                                        onClick={() => setSelectedLanguage(language)}
                                     >
-                                        {snippetLanguages.map((language: Language) => (
-                                            <DropdownActions.Item
-                                                key={language}
-                                                onClick={() => this.onSelectLanguage(language)}
-                                            >
-                                                {language}
-                                            </DropdownActions.Item>
-                                        ))}
-                                    </DropdownActions>
-                                </div>
-                                <div className={styles.library}>
-                                    <a
-                                        href={StreamrClientRepositories[selectedLanguage]}
-                                        target="_blank"
-                                        rel="nofollow noopener noreferrer"
-                                    >
-                                        <Translate value="modal.copySnippet.goToLibrary" />
-                                    </a>
-                                </div>
-                                <div className={styles.buttons}>
-                                    <Buttons
-                                        className={styles.noPadding}
-                                        actions={{
-                                            copy: {
-                                                title: I18n.t(`modal.copySnippet.${this.state.copied ? 'copied' : 'copy'}`),
-                                                onClick: this.onCopy,
-                                            },
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        </Fragment>
-                    )}
-                </Dialog>
-            </Modal>
-        )
-    }
+                                        {titleize(language)}
+                                    </Popover.Item>
+                                ))}
+                            </Popover>
+                        </div>
+                        <div className={styles.library}>
+                            <a
+                                href={StreamrClientRepositories[selectedLanguage]}
+                                target="_blank"
+                                rel="nofollow noopener noreferrer"
+                            >
+                                Go to Library
+                            </a>
+                        </div>
+                        <div className={styles.buttons}>
+                            <Buttons
+                                className={styles.noPadding}
+                                actions={{
+                                    copy: {
+                                        title: isCopied ? 'Copied' : 'Copy',
+                                        onClick: onCopy,
+                                    },
+                                }}
+                            />
+                        </div>
+                    </div>
+                ) : null)}
+            >
+                {selectedLanguage && (
+                    <CodeSnippet
+                        codeRef={codeRef}
+                        language={selectedLanguage}
+                        showLineNumbers
+                    >
+                        {snippets[selectedLanguage]}
+                    </CodeSnippet>
+                )}
+            </Dialog>
+        </ModalPortal>
+    )
 }
 
 export default SnippetDialog

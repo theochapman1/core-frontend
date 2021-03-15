@@ -2,43 +2,44 @@
 
 import BN from 'bignumber.js'
 
+export type Required = {
+    gas: BN,
+    eth?: BN,
+    data?: BN,
+    dai?: BN,
+}
+
+export type Balances = {
+    eth: BN,
+    data?: BN,
+    dai?: BN,
+}
+
+type Constructor = {
+    message: string,
+    required: Required,
+    balances: Balances,
+}
+
 export default class NoBalanceError extends Error {
     __proto__: any
-    requiredEthBalance: BN
-    currentEthBalance: BN
-    requiredDataBalance: BN
-    currentDataBalance: BN
+    required: Required
+    balances: Balances
 
-    constructor(
-        message: string,
-        requiredEthBalance: BN,
-        currentEthBalance: BN,
-        requiredDataBalance: BN,
-        currentDataBalance: BN,
-    ) {
+    constructor({ message, required, balances }: Constructor) {
         super(message)
-        this.requiredEthBalance = requiredEthBalance
-        this.currentEthBalance = currentEthBalance
-        this.requiredDataBalance = requiredDataBalance
-        this.currentDataBalance = currentDataBalance
+        this.required = required
+        this.balances = balances
 
         // This is because of some bug in babel
         this.__proto__ = NoBalanceError.prototype // eslint-disable-line no-proto
     }
 
-    getRequiredEthBalance(): BN {
-        return this.requiredEthBalance
+    getRequired(): Required {
+        return this.required
     }
 
-    getCurrentEthBalance(): BN {
-        return this.currentEthBalance
-    }
-
-    getRequiredDataBalance(): BN {
-        return this.requiredDataBalance
-    }
-
-    getCurrentDataBalance(): BN {
-        return this.currentDataBalance
+    getBalances(): Balances {
+        return this.balances
     }
 }

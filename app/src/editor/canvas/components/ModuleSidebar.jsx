@@ -1,16 +1,18 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useContext, useRef } from 'react'
 import cx from 'classnames'
 import startCase from 'lodash/startCase'
 
-import { Header, Content, Section } from '$editor/shared/components/Sidebar'
-
-import TextControl from '$shared/components/TextControl'
+import Sidebar, { Select } from '$shared/components/Sidebar'
+import Toggle from '$shared/components/Toggle'
+import Text from '$editor/canvas/components/Ports/Value/Text'
 
 import * as CanvasState from '../state'
+import * as RunController from './CanvasController/Run'
 import styles from './ModuleSidebar.pcss'
 import ModuleHelp from './ModuleHelp'
 
 export default function ModuleSidebar({ canvas, selectedModuleHash, setModuleOptions, onClose }) {
+    const { isEditable } = useContext(RunController.Context)
     const onChange = (name) => (_value) => {
         if (selectedModuleHash == null) { return }
         const module = CanvasState.getModule(canvas, selectedModuleHash)
@@ -19,11 +21,11 @@ export default function ModuleSidebar({ canvas, selectedModuleHash, setModuleOpt
         // format value based on option.type
         let value = _value
         if (option.type === 'int') {
-            value = parseInt(value, 10)
+            value = parseInt(value, 10) || 0
         }
 
         if (option.type === 'double') {
-            value = Number(value)
+            value = Number(value) || 0
         }
 
         if (option.type === 'string' || option.type === 'color') {
@@ -35,12 +37,8 @@ export default function ModuleSidebar({ canvas, selectedModuleHash, setModuleOpt
         })
     }
 
-    const onChangeValue = (name) => (event) => {
-        onChange(name)(event.target.value)
-    }
-
-    const onChangeChecked = (name) => (event) => {
-        onChange(name)(event.target.checked)
+    const onSelectChange = (name) => ({ value }) => {
+        onChange(name)(value)
     }
 
     const module = CanvasState.getModuleIfExists(canvas, selectedModuleHash)
@@ -61,58 +59,54 @@ export default function ModuleSidebar({ canvas, selectedModuleHash, setModuleOpt
     }
 
     const optionsKeys = Object.keys(module.options || {})
-    const isRunning = canvas.state === CanvasState.RunStates.Running
     return (
         <React.Fragment>
-            <Header
+            <Sidebar.Header
                 title={module.displayName || module.name}
                 onClose={onClose}
             />
-            <Content>
+            <Sidebar.Body>
                 {!optionsKeys.length ? null : (
-                    <Section label="Options" initialIsOpen>
+                    <Sidebar.Collapse label="Options" isOpen>
                         <div className={cx(styles.optionsFields)}>
                             {optionsKeys.map((name) => {
                                 const option = module.options[name]
                                 const id = `${module.id}.options.${name}`
+                                const opts = option.possibleValues ? option.possibleValues.map(({ text, value }) => ({
+                                    label: text,
+                                    value,
+                                })) : []
                                 return (
                                     <React.Fragment key={id}>
                                         <label htmlFor={id}>{startCase(name)}</label>
                                         {option.possibleValues ? (
                                             /* Select */
-                                            <select
+                                            <Select
                                                 id={id}
-                                                value={option.value}
-                                                onChange={onChangeValue(name)}
-                                            >
-                                                {option.possibleValues.map(({ text, value }) => (
-                                                    <option
-                                                        key={value}
-                                                        value={value}
-                                                        disabled={!!isRunning}
-                                                    >
-                                                        {text}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                className={styles.select}
+                                                value={opts.filter((opt) => opt.value === option.value)}
+                                                onChange={onSelectChange(name)}
+                                                options={opts}
+                                                disabled={!isEditable}
+                                            />
                                         ) : (
                                             /* Toggle */
                                             (option.type === 'boolean' && (
-                                                <input
+                                                <Toggle
                                                     id={id}
-                                                    checked={option.value}
-                                                    type="checkbox"
-                                                    onChange={onChangeChecked(name)}
-                                                    disabled={!!isRunning}
+                                                    className={styles.toggle}
+                                                    value={option.value}
+                                                    onChange={onChange(name)}
+                                                    disabled={!isEditable}
                                                 />
                                             )) || (
                                                 /* Text */
-                                                <TextControl
-                                                    disabled={!!isRunning}
+                                                <Text
                                                     id={id}
-                                                    onCommit={onChange(name)}
+                                                    className={styles.input}
                                                     value={option.value}
-                                                    immediateCommit={false}
+                                                    onChange={onChange(name)}
+                                                    disabled={!isEditable}
                                                 />
                                             )
                                         )}
@@ -120,12 +114,12 @@ export default function ModuleSidebar({ canvas, selectedModuleHash, setModuleOpt
                                 )
                             })}
                         </div>
-                    </Section>
+                    </Sidebar.Collapse>
                 )}
-                <Section label="About">
-                    <ModuleHelp moduleId={module.id} />
-                </Section>
-            </Content>
+                <Sidebar.Collapse label="Description" isOpen>
+                    <ModuleHelp className={styles.moduleHelp} module={module} />
+                </Sidebar.Collapse>
+            </Sidebar.Body>
         </React.Fragment>
     )
 }

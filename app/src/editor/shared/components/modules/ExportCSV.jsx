@@ -5,8 +5,8 @@ import cx from 'classnames'
 import throttle from 'lodash/throttle'
 import { saveAs } from 'file-saver'
 
-import api from '$editor/shared/utils/api'
-import { formatApiUrl } from '$shared/utils/url'
+import { get } from '$shared/utils/api'
+import routes from '$routes'
 import ModuleSubscription from '../ModuleSubscription'
 
 import styles from './ExportCSV.pcss'
@@ -55,12 +55,16 @@ export default class ExportCSVModule extends React.Component<Props, State> {
     }, 250)
 
     downloadFile = async (filename: string) => {
-        const url = formatApiUrl(`canvases/downloadCsv?filename=${filename}`)
-        const result = await api().get(url, {
-            responseType: 'blob',
-            timeout: 30000,
+        const result = await get({
+            url: routes.api.canvases.downloadCsv({
+                filename,
+            }),
+            options: {
+                responseType: 'blob',
+                timeout: 30000,
+            },
         })
-        await saveAs(result.data, filename)
+        await saveAs(result, filename)
 
         if (this.unmounted) {
             return

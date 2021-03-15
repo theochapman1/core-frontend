@@ -1,32 +1,25 @@
 // @flow
 
-import React, { useContext, useEffect } from 'react'
+import React, { useContext, useEffect, type ComponentType } from 'react'
 import cx from 'classnames'
-
 import Probe from '$editor/canvas/components/Resizable/SizeConstraintProvider/Probe'
+import useModule from '../ModuleRenderer/useModule'
+import useModuleApi from '../ModuleRenderer/useModuleApi'
+
 import { Context as SizeConstraintContext } from '../Resizable/SizeConstraintProvider'
 import Port from './Port'
 import styles from './ports.pcss'
 
 type Props = {
-    api: any,
-    canvas: any,
     className?: ?string,
-    module: any,
     onPort: any,
     onValueChange: any,
 }
 
-const Ports = ({
-    api,
-    canvas,
-    className,
-    module,
-    onPort,
-    onValueChange,
-}: Props) => {
-    const { outputs } = module
-    const inputs = module.params.concat(module.inputs)
+const Ports = ({ className, onPort, onValueChange }: Props) => {
+    const { module: { outputs, params, ...module } } = useModule()
+    const inputs = params.concat(module.inputs)
+    const { port: { setPortOptions } } = useModuleApi()
     const { refreshProbes } = useContext(SizeConstraintContext)
     const maxPorts = Math.max(inputs.length, outputs.length)
 
@@ -42,14 +35,12 @@ const Ports = ({
                 <Probe uid="inputs" width="auto" group="Ports" />
                 {inputs.map((port) => (
                     <Port
-                        api={api}
-                        canvas={canvas}
                         key={port.id}
                         onPort={onPort}
                         onValueChange={onValueChange}
                         onSizeChange={refreshProbes}
                         port={port}
-                        setOptions={api.port.setPortOptions}
+                        setOptions={setPortOptions}
                     />
                 ))}
             </div>
@@ -60,14 +51,12 @@ const Ports = ({
                 <Probe uid="outputs" width="auto" group="Ports" />
                 {outputs.map((port) => (
                     <Port
-                        api={api}
-                        canvas={canvas}
                         key={port.id}
                         onPort={onPort}
                         onValueChange={onValueChange}
                         onSizeChange={refreshProbes}
                         port={port}
-                        setOptions={api.port.setPortOptions}
+                        setOptions={setPortOptions}
                     />
                 ))}
             </div>
@@ -75,4 +64,4 @@ const Ports = ({
     )
 }
 
-export default Ports
+export default (React.memo(Ports): ComponentType<Props>)

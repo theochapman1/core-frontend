@@ -1,4 +1,4 @@
-// $flow
+// @flow
 
 import React from 'react'
 import { storiesOf } from '@storybook/react'
@@ -19,6 +19,62 @@ stories.add('default', () => (
             <UseState initialValue="Double-click to edit…">
                 {(text, setText) => (
                     <EditableText
+                        editing={editing}
+                        onChange={setText}
+                        setEditing={setEditing}
+                    >
+                        {text}
+                    </EditableText>
+                )}
+            </UseState>
+        )}
+    </UseState>
+))
+
+stories.add('zero', () => (
+    <UseState initialValue={false}>
+        {(editing, setEditing) => (
+            <UseState initialValue={0}>
+                {(text, setText) => (
+                    <EditableText
+                        editing={editing}
+                        onChange={setText}
+                        setEditing={setEditing}
+                    >
+                        {text}
+                    </EditableText>
+                )}
+            </UseState>
+        )}
+    </UseState>
+))
+
+stories.add('placeholder', () => (
+    <UseState initialValue={false}>
+        {(editing, setEditing) => (
+            <UseState initialValue="">
+                {(text, setText) => (
+                    <EditableText
+                        placeholder="Placeholder Text"
+                        editing={editing}
+                        onChange={setText}
+                        setEditing={setEditing}
+                    >
+                        {text}
+                    </EditableText>
+                )}
+            </UseState>
+        )}
+    </UseState>
+))
+
+stories.add('short placeholder', () => (
+    <UseState initialValue={false}>
+        {(editing, setEditing) => (
+            <UseState initialValue="">
+                {(text, setText) => (
+                    <EditableText
+                        placeholder="M"
                         editing={editing}
                         onChange={setText}
                         setEditing={setEditing}

@@ -1,49 +1,82 @@
 // @flow
 
 import React from 'react'
-import { Translate, I18n } from 'react-redux-i18n'
+import styled from 'styled-components'
 
+import ModalPortal from '$shared/components/ModalPortal'
 import Dialog from '$shared/components/Dialog'
-import ExternalLinkButton from '$shared/components/Buttons/ExternalLinkButton'
 import PngIcon from '$shared/components/PngIcon'
+import Button from '$shared/components/Button'
+import Link from '$shared/components/Link'
+import { MD } from '$shared/utils/styled'
 
-import styles from './installSupportedBrowserDialog.pcss'
+import styles from '../web3NotDetectedDialog.pcss'
+
+const Message = styled.p`
+    span {
+        display: block;
+    }
+
+    @media (min-width: ${MD}px) {
+        span {
+            display: inline;
+        }
+    }
+`
 
 export type Props = {
     onClose: () => void,
 }
 
 const InstallSupportedBrowserDialog = ({ onClose, ...props }: Props) => (
-    <Dialog
-        onClose={onClose}
-        title={I18n.t('modal.web3.installsupportedbrowser.title')}
-        {...props}
-    >
-        <PngIcon
-            name="browserNotSupported"
-            className={styles.icon}
-            alt={I18n.t('modal.web3.installsupportedbrowser.imageCaption')}
-        />
-        <p><Translate value="modal.web3.installsupportedbrowser.message" dangerousHTML /></p>
-
-        <div className={styles.buttonContainer}>
-            <ExternalLinkButton
-                textI18nKey="modal.web3.installsupportedbrowser.brave"
-                href="https://brave.com/"
-                className={styles.button}
+    <ModalPortal>
+        <Dialog
+            {...props}
+            onClose={onClose}
+            title="Your browser is not supported"
+            renderActions={() => (
+                <div className={styles.buttonContainer}>
+                    <Button
+                        kind="secondary"
+                        tag={Link}
+                        href="https://brave.com"
+                        target="_blank"
+                    >
+                        Brave
+                    </Button>
+                    <Button
+                        kind="secondary"
+                        tag={Link}
+                        href="https://www.google.com/chrome"
+                        target="_blank"
+                    >
+                        Chrome
+                    </Button>
+                    <Button
+                        kind="secondary"
+                        tag={Link}
+                        href="https://www.mozilla.org/en-US/firefox/new"
+                        target="_blank"
+                    >
+                        Firefox
+                    </Button>
+                </div>
+            )}
+        >
+            <PngIcon
+                name="browserNotSupported"
+                className={styles.icon}
+                alt="Browser not supported"
             />
-            <ExternalLinkButton
-                textI18nKey="modal.web3.installsupportedbrowser.chrome"
-                href="https://www.google.com/chrome/"
-                className={styles.button}
-            />
-            <ExternalLinkButton
-                textI18nKey="modal.web3.installsupportedbrowser.firefox"
-                href="https://www.mozilla.org/en-US/firefox/new/"
-                className={styles.button}
-            />
-        </div>
-    </Dialog>
+            <Message>
+                <span>Your browser doesn&apos;t support Web3. </span>
+                <span>Please use a supported</span>
+            </Message>
+            <p>
+                browser and try again
+            </p>
+        </Dialog>
+    </ModalPortal>
 )
 
 export default InstallSupportedBrowserDialog

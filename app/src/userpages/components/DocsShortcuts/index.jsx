@@ -3,35 +3,35 @@
 import React from 'react'
 import Link from '$shared/components/Link'
 import Onboarding from '$shared/components/Onboarding'
-import { Translate } from 'react-redux-i18n'
 import routes from '$routes'
+import docsLinks from '$shared/../docsLinks'
 
 const DocsShortcuts = () => (
     <Onboarding title="Docs">
-        <Link to={routes.docsIntroduction()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.introduction" />
+        <Link to={docsLinks.gettingStarted} target="_blank" rel="noopener noreferrer">
+            Getting started
         </Link>
-        <Link to={routes.docsGettingStarted()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.gettingStarted" />
+        <Link to={docsLinks.streams} target="_blank" rel="noopener noreferrer">
+            Streams
         </Link>
-        <Link to={routes.docsVisualEditor()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.editor" />
+        <Link to={docsLinks.canvases} target="_blank" rel="noopener noreferrer">
+            Canvases
         </Link>
-        <Link to={routes.docsStreamrEngine()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.engine" />
+        <Link to={docsLinks.dashboards} target="_blank" rel="noopener noreferrer">
+            Dashboards
         </Link>
-        <Link to={routes.docsDataMarketplace()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.marketplace" />
+        <Link to={docsLinks.products} target="_blank" rel="noopener noreferrer">
+            Products
         </Link>
-        <Link to={routes.docsApi()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.streamrApi" />
+        <Link to={docsLinks.dataUnions} target="_blank" rel="noopener noreferrer">
+            Data Unions
         </Link>
         {null}
-        <Link href={routes.communityTelegram()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.telegramGroup" />
+        <Link href={routes.community.discord()} target="_blank" rel="noopener noreferrer">
+            Discord
         </Link>
         <Link href={routes.giveFeedback()} target="_blank" rel="noopener noreferrer">
-            <Translate value="general.giveFeedback" />
+            Give feedback
         </Link>
     </Onboarding>
 )

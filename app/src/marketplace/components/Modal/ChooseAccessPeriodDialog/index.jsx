@@ -1,135 +1,298 @@
 // @flow
 
-import React from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import BN from 'bignumber.js'
-import { Form, FormGroup } from 'reactstrap'
-import { I18n } from 'react-redux-i18n'
+import cx from 'classnames'
 
-import { toSeconds } from '$mp/utils/time'
-import { dataToUsd, usdToData, formatDecimals } from '$mp/utils/price'
-import { currencies } from '$shared/utils/constants'
-import type { SmartContractProduct } from '$mp/flowtype/product-types'
-import type { Currency, NumberString, TimeUnit } from '$shared/flowtype/common-types'
+import Buttons from '$shared/components/Buttons'
+import Text from '$ui/Text'
+import LoadingIndicator from '$shared/components/LoadingIndicator'
+import SelectField from '$mp/components/SelectField'
+import { uniswapDATAtoETH, uniswapDATAtoDAI, uniswapETHtoDATA } from '$mp/utils/web3'
+import { dataToUsd, formatDecimals, dataForTimeUnits } from '$mp/utils/price'
+import { timeUnits, contractCurrencies, paymentCurrencies, DEFAULT_CURRENCY, MIN_UNISWAP_AMOUNT_USD } from '$shared/utils/constants'
+import type { Product, AccessPeriod } from '$mp/flowtype/product-types'
+import type { PaymentCurrency, NumberString, TimeUnit } from '$shared/flowtype/common-types'
+import ModalPortal from '$shared/components/ModalPortal'
 import Dialog from '$shared/components/Dialog'
+import Errors, { MarketplaceTheme } from '$ui/Errors'
+import { useDebounced } from '$shared/hooks/wrapCallback'
+import CurrencySelector from './CurrencySelector'
 
-import TimeUnitSelector from './TimeUnitSelector'
-import style from './chooseAccessPeriod.pcss'
+import styles from './chooseAccessPeriod.pcss'
+
+export type Balances = {
+    [$Values<typeof paymentCurrencies>]: NumberString,
+}
 
 export type Props = {
     dataPerUsd: ?NumberString,
-    contractProduct: SmartContractProduct,
-    onNext: (time: NumberString, timeUnit: TimeUnit) => void,
+    pricePerSecond: $ElementType<Product, 'pricePerSecond'>,
+    priceCurrency: $ElementType<Product, 'priceCurrency'>,
+    balances: Balances,
+    onNext: (AccessPeriod) => Promise<void>,
     onCancel: () => void,
+    disabled?: boolean,
+    initialValues?: AccessPeriod,
 }
 
-type State = {
-    time: NumberString,
-    timeUnit: TimeUnit,
-}
+const options = [timeUnits.hour, timeUnits.day, timeUnits.week, timeUnits.month].map((unit: TimeUnit) => ({
+    label: unit,
+    value: unit,
+}))
 
-export class ChooseAccessPeriodDialog extends React.Component<Props, State> {
-    static parsePrice = (time: NumberString | BN, timeUnit: TimeUnit, pricePerSecond: BN, currency: Currency) => {
-        if (!BN(time).isNaN() && BN(time).isGreaterThan(0)) {
-            return formatDecimals(toSeconds(time, timeUnit).multipliedBy(pricePerSecond), currency).toString()
-        }
-        return '-'
-    }
+/* eslint-disable object-curly-newline */
+export const ChooseAccessPeriodDialog = ({
+    pricePerSecond,
+    priceCurrency,
+    balances,
+    onNext,
+    onCancel,
+    dataPerUsd,
+    disabled,
+    initialValues,
+}: Props) => {
+    const {
+        time: initialTime = '1',
+        timeUnit: initialTimeUnit = 'hour',
+        paymentCurrency: initialPaymentCurrency = DEFAULT_CURRENCY,
+    } = initialValues || {}
+    const [time, setTime] = useState(initialTime)
+    const [timeUnit, setTimeUnit] = useState(initialTimeUnit)
+    const [paymentCurrency, setPaymentCurrency] = useState(initialPaymentCurrency)
+    const [loading, setLoading] = useState(false)
+    const [currentPrice, setCurrentPrice] = useState('-')
+    const [approxUsd, setApproxUsd] = useState('-')
 
-    state = {
-        time: '1',
-        timeUnit: 'hour',
-    }
-
-    onTimeUnitChange = (timeUnit: TimeUnit) => {
-        this.setState({
+    const [priceInData, priceInUsd] = useMemo(() => {
+        const inData = dataForTimeUnits(
+            pricePerSecond,
+            dataPerUsd,
+            priceCurrency,
+            time,
             timeUnit,
-        })
-    }
+        )
 
-    render() {
-        const { contractProduct, onNext, onCancel, dataPerUsd } = this.props
-        const { time, timeUnit } = this.state
-        const { pricePerSecond, priceCurrency } = contractProduct
-        if (!dataPerUsd) {
-            // is probably just loading
-            return null
+        return [
+            inData,
+            dataToUsd(inData, dataPerUsd),
+        ]
+    }, [dataPerUsd, priceCurrency, pricePerSecond, time, timeUnit])
+
+    const isValidTime = useMemo(() => !BN(time).isNaN() && BN(time).isGreaterThan(0), [time])
+
+    const isValidPrice = useMemo(() => {
+        if (paymentCurrency === paymentCurrencies.ETH) {
+            if (Number(priceInUsd) < MIN_UNISWAP_AMOUNT_USD) { return false }
+            return !(BN(currentPrice).isNaN() || !BN(currentPrice).isGreaterThan(0) || !BN(currentPrice).isFinite())
         }
 
-        const pricePerSecondInData = priceCurrency === currencies.DATA ?
-            pricePerSecond :
-            usdToData(pricePerSecond, dataPerUsd)
+        if (paymentCurrency === paymentCurrencies.DAI) {
+            if (Number(priceInUsd) < MIN_UNISWAP_AMOUNT_USD) { return false }
+            return !(BN(currentPrice).isNaN() || !BN(currentPrice).isGreaterThan(0) || !BN(currentPrice).isFinite())
+        }
 
-        const pricePerSecondInUsd = priceCurrency === currencies.USD ?
-            pricePerSecond :
-            dataToUsd(pricePerSecond, dataPerUsd)
+        return true
+    }, [paymentCurrency, priceInUsd, currentPrice])
 
-        return (
+    const setExternalPrices = useDebounced(useCallback(async ({
+        dataPerUsd: perUsd,
+        priceInData: inData,
+        priceInUsd: inUsd,
+        paymentCurrency: currency,
+    }) => {
+        setLoading(true)
+
+        let price
+        let usdEstimate
+        if (currency === paymentCurrencies.ETH) {
+            price = await uniswapDATAtoETH(inData.toString(), true)
+            usdEstimate = await uniswapETHtoDATA(price.toString(), true)
+            usdEstimate = usdEstimate.dividedBy(Number(perUsd) || 1)
+        } else if (currency === paymentCurrencies.DAI) {
+            price = await uniswapDATAtoDAI(inData.toString(), true)
+            usdEstimate = price
+        } else {
+            price = inData
+            usdEstimate = inUsd
+        }
+
+        setCurrentPrice(price)
+        setApproxUsd(usdEstimate)
+
+        setLoading(false)
+    }, []), 250)
+
+    const displayPrice = useMemo(() => (
+        BN(currentPrice).isNaN() ? 'N/A' : formatDecimals(currentPrice, paymentCurrency)
+    ), [currentPrice, paymentCurrency])
+
+    const displayApproxUsd = useMemo(() => (
+        BN(approxUsd).isNaN() ? 'N/A' : formatDecimals(approxUsd, contractCurrencies.USD)
+    ), [approxUsd])
+
+    useEffect(() => {
+        setExternalPrices({
+            dataPerUsd,
+            priceInData,
+            priceInUsd,
+            paymentCurrency,
+        })
+    }, [setExternalPrices, dataPerUsd, priceInData, paymentCurrency, priceInUsd])
+
+    const currentBalance = useMemo(() => (
+        (balances && balances[paymentCurrency]) ? formatDecimals(balances[paymentCurrency], paymentCurrency) : '-'
+    ), [balances, paymentCurrency])
+
+    const selectedValue = useMemo(() => options.find(({ value: optionValue }) => optionValue === timeUnit), [timeUnit])
+
+    const onTimeUnitChange = useCallback((t) => {
+        setTimeUnit(t)
+    }, [])
+
+    const onPaymentCurrencyChange = useCallback((currency: PaymentCurrency) => {
+        setPaymentCurrency(currency)
+    }, [setPaymentCurrency])
+
+    const actions = {
+        cancel: {
+            title: 'Cancel',
+            onClick: () => onCancel(),
+            kind: 'link',
+        },
+        next: {
+            title: 'Next',
+            kind: 'primary',
+            outline: true,
+            onClick: () => onNext({
+                time,
+                timeUnit,
+                paymentCurrency,
+                price: currentPrice,
+                approxUsd,
+            }),
+            disabled: !isValidTime || !isValidPrice || loading,
+        },
+    }
+
+    return (
+        <ModalPortal>
             <Dialog
                 onClose={onCancel}
-                title={I18n.t('modal.chooseAccessPeriod.title')}
-                actions={{
-                    cancel: {
-                        title: I18n.t('modal.common.cancel'),
-                        onClick: onCancel,
-                        color: 'link',
-                    },
-                    next: {
-                        title: I18n.t('modal.common.next'),
-                        color: 'primary',
-                        outline: true,
-                        onClick: () => onNext(time, timeUnit),
-                        disabled: BN(time).isNaN() || BN(time).isLessThanOrEqualTo(0),
-                    },
-                }}
-            >
-                <Form className={style.accessPeriodForm}>
-                    <FormGroup className={style.accessPeriodNumberSelector}>
-                        <input
-                            className={style.accessPeriodNumber}
-                            type="text"
-                            name="time"
-                            id="time"
-                            min={1}
-                            value={!BN(time).isNaN() ? time : ''}
-                            onChange={(e: SyntheticInputEvent<EventTarget>) => this.setState({
-                                time: e.target.value,
-                            })}
-                            onBlur={(e: SyntheticInputEvent<EventTarget>) => {
-                                if (parseInt(e.target.value, 10) <= 1) {
-                                    this.setState({
-                                        time: '1',
-                                    })
-                                }
-                            }}
+                title={(
+                    <React.Fragment>
+                        <span className={styles.title}>
+                            Choose your access period &amp; payment token
+                        </span>
+                        <span className={styles.mobileTitle}>
+                            Choose your access period
+                        </span>
+                    </React.Fragment>
+                )}
+                actions={actions}
+                renderActions={() => (
+                    <div className={cx(styles.footer, {
+                        [styles.onlyButtons]: paymentCurrency === paymentCurrencies.DATA,
+                    })}
+                    >
+                        {paymentCurrency !== paymentCurrencies.DATA && (
+                            <span className={styles.uniswapFooter}>
+                                Exchange via Uniswap
+                            </span>
+                        )}
+                        <Buttons
+                            actions={actions}
                         />
-                    </FormGroup>
-                    <FormGroup tag="fieldset" className={style.timeUnitFieldset}>
-                        <div className={style.timeUnitSelectionCol}>
-                            <TimeUnitSelector timeUnit={this.state.timeUnit} onChange={this.onTimeUnitChange} />
-                            <div className={style.priceLabels}>
-                                <div className={style.priceColumn}>
-                                    <span className={style.priceValue}>
-                                        {ChooseAccessPeriodDialog.parsePrice(time, timeUnit, pricePerSecondInData, currencies.DATA)}
-                                    </span>
-                                    <span className={style.priceLabel}>
-                                        {currencies.DATA}
-                                    </span>
-                                </div>
-                                <div className={style.priceColumn}>
-                                    <span className={style.priceValue}>
-                                        ${ChooseAccessPeriodDialog.parsePrice(time, timeUnit, pricePerSecondInUsd, currencies.USD)}
-                                    </span>
-                                    <span className={style.priceLabel}>
-                                        {currencies.USD}
-                                    </span>
-                                </div>
-                            </div>
+                    </div>
+                )}
+                contentClassName={styles.noPadding}
+                disabled={disabled}
+            >
+                <div className={styles.root}>
+                    <div className={styles.accessPeriod}>
+                        <div className={styles.timeValueInput}>
+                            <Text
+                                type="number"
+                                value={isValidTime ? time : ''}
+                                invalid={!isValidTime || !isValidPrice}
+                                onChange={(e: SyntheticInputEvent<EventTarget>) => setTime(e.target.value)}
+                                className={styles.accessPeriodNumber}
+                            />
+                            <SelectField
+                                placeholder="Select"
+                                options={options}
+                                value={selectedValue}
+                                onChange={({ value: nextValue }) => onTimeUnitChange(nextValue)}
+                                className={styles.accessPeriodUnit}
+                            />
                         </div>
-                    </FormGroup>
-                </Form>
+                        {(!isValidTime || !isValidPrice) &&
+                        paymentCurrency !== paymentCurrencies.DATA &&
+                        currentPrice !== '-' && // prevent false positives during load
+                        (
+                            <Errors theme={MarketplaceTheme} className={styles.uniswapErrors}>
+                                {!isValidTime && (
+                                    <p className={styles.invalidInputDesktop}>
+                                        Access period must be a number
+                                    </p>
+                                )}
+                                {!isValidPrice && Number(priceInUsd) < MIN_UNISWAP_AMOUNT_USD &&
+                                    <React.Fragment>
+                                        <p className={styles.invalidInputDesktop}>
+                                            Transaction too small for Uniswap. Please try a longer period.
+                                        </p>
+                                        <p className={styles.invalidInputMobile}>
+                                            Transaction too small. Please try a longer period.
+                                        </p>
+                                    </React.Fragment>
+                                }
+                                {!isValidPrice && Number(priceInUsd) > MIN_UNISWAP_AMOUNT_USD &&
+                                    <React.Fragment>
+                                        <p className={styles.invalidInputDesktop}>
+                                            Transaction too large for Uniswap. Please try a shorter period.
+                                        </p>
+                                        <p className={styles.invalidInputMobile}>
+                                            Transaction too large. Please try a shorter period.
+                                        </p>
+                                    </React.Fragment>
+                                }
+                            </Errors>
+                        )}
+                    </div>
+                    <div className={styles.balanceAndPrice}>
+                        <span className={styles.balance}>
+                            <span className={styles.balanceValue}>
+                                {currentBalance}
+                            </span>
+                            <span className={styles.balanceLabel}>
+                                Balance
+                            </span>
+                        </span>
+                        <span className={styles.priceValue}>
+                            {displayPrice}
+                            <span className={styles.priceCurrency}>
+                                {paymentCurrency}
+                            </span>
+                        </span>
+                        <span className={styles.usdEquiv}>
+                            Approx {displayApproxUsd} {contractCurrencies.USD}
+                        </span>
+                    </div>
+                    <LoadingIndicator loading={!!loading} className={styles.loadingIndicator} />
+                    <CurrencySelector
+                        onChange={onPaymentCurrencyChange}
+                        paymentCurrency={paymentCurrency}
+                    />
+                    {paymentCurrency !== paymentCurrencies.DATA && (
+                        <p className={styles.uniswapMsg}>
+                            Exchange via Uniswap
+                        </p>
+                    )}
+                </div>
             </Dialog>
-        )
-    }
+        </ModalPortal>
+    )
 }
+/* eslint-enable object-curly-newline */
 
 export default ChooseAccessPeriodDialog

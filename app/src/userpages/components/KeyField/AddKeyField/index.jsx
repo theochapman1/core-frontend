@@ -1,105 +1,77 @@
-// @flow
+import React, { useReducer, useCallback } from 'react'
 
-import React from 'react'
-import { Button } from 'reactstrap'
-
-import type { ResourcePermission } from '$shared/flowtype/resource-key-types'
+import Button from '$shared/components/Button'
+import useIsMounted from '$shared/hooks/useIsMounted'
 import KeyFieldEditor from '../KeyFieldEditor'
 
-import styles from './addKeyField.pcss'
-
-type Props = {
-    label: string,
-    createWithValue?: boolean,
-    onSave: (keyName: string, value: string, permission: ?ResourcePermission) => Promise<void>,
-    showPermissionType?: boolean,
-    addKeyFieldAllowed: boolean,
-}
-
-type State = {
-    editing: boolean,
-    waiting: boolean,
-    error: ?string,
-}
-
-class AddKeyField extends React.Component<Props, State> {
-    state = {
+const AddKeyField = ({ label, addKeyFieldAllowed, labelType, onSave: onSaveProp }) => {
+    const [{ editing, waiting, error }, updateState] = useReducer((state, nextState) => ({
+        ...state,
+        ...nextState,
+    }), {
         editing: false,
         waiting: false,
         error: undefined,
-    }
+    })
+    const isMounted = useIsMounted()
 
-    componentWillUnmount() {
-        this.unmounted = true
-    }
-
-    unmounted: boolean = false
-
-    onEdit = (e: SyntheticInputEvent<EventTarget>) => {
+    const onEdit = useCallback((e) => {
         e.preventDefault()
-        this.setState({
+        updateState({
             editing: true,
         })
-    }
+    }, [updateState])
 
-    onCancel = () => {
-        this.setState({
+    const onCancel = useCallback(() => {
+        updateState({
             editing: false,
             waiting: false,
         })
-    }
+    }, [updateState])
 
-    onSave = (keyName: string, value: string, permission: ?ResourcePermission) => {
-        this.setState({
+    const onSave = useCallback(async (keyName) => {
+        updateState({
             waiting: true,
             error: null,
-        }, async () => {
-            try {
-                await this.props.onSave(keyName, value, permission)
-
-                if (!this.unmounted) {
-                    this.setState({
-                        editing: false,
-                        waiting: false,
-                    })
-                }
-            } catch (error) {
-                if (!this.unmounted) {
-                    this.setState({
-                        waiting: false,
-                        error: error.message,
-                    })
-                }
-            }
         })
-    }
 
-    render = () => {
-        const { editing, waiting, error } = this.state
-        const { label, createWithValue, showPermissionType, addKeyFieldAllowed } = this.props
-        return !editing ? (
-            <Button
-                type="button"
-                color="userpages"
-                className={styles.button}
-                onClick={this.onEdit}
-                outline
-                disabled={!addKeyFieldAllowed}
-            >
-                {label}
-            </Button>
-        ) : (
-            <KeyFieldEditor
-                createNew
-                onCancel={this.onCancel}
-                onSave={this.onSave}
-                editValue={createWithValue}
-                waiting={waiting}
-                error={error}
-                showPermissionType={showPermissionType}
-            />
-        )
-    }
+        try {
+            await onSaveProp(keyName)
+
+            if (isMounted()) {
+                updateState({
+                    editing: false,
+                    waiting: false,
+                })
+            }
+        } catch (error) {
+            if (isMounted()) {
+                updateState({
+                    waiting: false,
+                    error: error.message,
+                })
+            }
+        }
+    }, [isMounted, updateState, onSaveProp])
+
+    return !editing ? (
+        <Button
+            kind="secondary"
+            onClick={onEdit}
+            disabled={!addKeyFieldAllowed}
+        >
+            {label}
+        </Button>
+    ) : (
+        <KeyFieldEditor
+            createNew
+            onCancel={onCancel}
+            onSave={onSave}
+            waiting={waiting}
+            error={error}
+            labelType={labelType}
+        />
+    )
 }
 
 export default AddKeyField

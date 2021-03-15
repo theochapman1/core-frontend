@@ -5,7 +5,7 @@ import { arrayMove } from 'react-sortable-hoc'
 import SortableList from '$shared/components/SortableList'
 import { withHover } from '$shared/components/WithHover'
 import SvgIcon from '$shared/components/SvgIcon'
-import TextControl from '$shared/components/TextControl'
+import Text from '$ui/Text'
 
 import styles from './Scheduler.pcss'
 
@@ -67,7 +67,13 @@ const months = {
     '12': 'December',
 }
 
-const Select = ({ value, onChange, children, width }) => {
+const Select = ({
+    disabled,
+    value,
+    onChange,
+    children,
+    width,
+}) => {
     const style = {}
 
     if (width) {
@@ -75,14 +81,17 @@ const Select = ({ value, onChange, children, width }) => {
     }
 
     return (
-        <select
-            value={value}
-            onChange={(e) => onChange(parseInt(e.target.value, 10))}
-            className={styles.select}
-            style={style}
-        >
-            {children}
-        </select>
+        <div className={styles.selectWrapper}>
+            <select
+                disabled={disabled}
+                value={value}
+                onChange={(e) => onChange(parseInt(e.target.value, 10))}
+                className={styles.select}
+                style={style}
+            >
+                {children}
+            </select>
+        </div>
     )
 }
 
@@ -92,12 +101,12 @@ export const ValueInput = ({ value, onChange, disabled }) => {
     }
 
     return (
-        <TextControl
+        <Text
+            unstyled
             className={styles.input}
-            commitEmpty
             disabled={disabled}
             flushHistoryOnBlur
-            onCommit={(value) => onChange(parseInt(value, 10))}
+            onChange={(e) => onChange(parseInt(e.target.value, 10))}
             style={style}
             type="number"
             value={value}
@@ -152,10 +161,11 @@ const MonthSelect = (props) => (
     </Select>
 )
 
-const HourControl = ({ startDate, endDate, onChange }) => (
+const HourControl = ({ disabled, startDate, endDate, onChange }) => (
     <Fragment>
         From hour+ <MinuteAmountSelect
             value={startDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: { minute: value },
             })}
@@ -163,6 +173,7 @@ const HourControl = ({ startDate, endDate, onChange }) => (
         <br />
         To hour+ <MinuteAmountSelect
             value={endDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: { minute: value },
             })}
@@ -209,10 +220,11 @@ const DayControl = ({ startDate, endDate, onChange }) => (
     </Fragment>
 )
 
-const WeekControl = ({ startDate, endDate, onChange }) => (
+const WeekControl = ({ disabled, startDate, endDate, onChange }) => (
     <Fragment>
         From <WeekdaySelect
             value={startDate.weekday}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     weekday: value,
@@ -223,6 +235,7 @@ const WeekControl = ({ startDate, endDate, onChange }) => (
         />
         at <HourSelect
             value={startDate.hour}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     weekday: startDate.weekday,
@@ -232,6 +245,7 @@ const WeekControl = ({ startDate, endDate, onChange }) => (
             })}
         />:<MinuteSelect
             value={startDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     weekday: startDate.weekday,
@@ -242,6 +256,7 @@ const WeekControl = ({ startDate, endDate, onChange }) => (
         /><br />
         To <WeekdaySelect
             value={endDate.weekday}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     weekday: value,
@@ -252,6 +267,7 @@ const WeekControl = ({ startDate, endDate, onChange }) => (
         />
         at <HourSelect
             value={endDate.hour}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     weekday: endDate.weekday,
@@ -261,6 +277,7 @@ const WeekControl = ({ startDate, endDate, onChange }) => (
             })}
         />:<MinuteSelect
             value={endDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     weekday: endDate.weekday,
@@ -272,10 +289,11 @@ const WeekControl = ({ startDate, endDate, onChange }) => (
     </Fragment>
 )
 
-const MonthControl = ({ startDate, endDate, onChange }) => (
+const MonthControl = ({ disabled, startDate, endDate, onChange }) => (
     <Fragment>
         From <DaySelect
             value={startDate.day}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     day: value,
@@ -286,6 +304,7 @@ const MonthControl = ({ startDate, endDate, onChange }) => (
         />
         at <HourSelect
             value={startDate.hour}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     day: startDate.day,
@@ -295,6 +314,7 @@ const MonthControl = ({ startDate, endDate, onChange }) => (
             })}
         />:<MinuteSelect
             value={startDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     day: startDate.day,
@@ -305,6 +325,7 @@ const MonthControl = ({ startDate, endDate, onChange }) => (
         /><br />
         To <DaySelect
             value={endDate.day}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     day: value,
@@ -315,6 +336,7 @@ const MonthControl = ({ startDate, endDate, onChange }) => (
         />
         at <HourSelect
             value={endDate.hour}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     day: endDate.day,
@@ -324,6 +346,7 @@ const MonthControl = ({ startDate, endDate, onChange }) => (
             })}
         />:<MinuteSelect
             value={endDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     day: endDate.day,
@@ -335,10 +358,11 @@ const MonthControl = ({ startDate, endDate, onChange }) => (
     </Fragment>
 )
 
-const YearControl = ({ startDate, endDate, onChange }) => (
+const YearControl = ({ disabled, startDate, endDate, onChange }) => (
     <Fragment>
         From <DaySelect
             value={startDate.day}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     month: startDate.month,
@@ -350,6 +374,7 @@ const YearControl = ({ startDate, endDate, onChange }) => (
         />
         <MonthSelect
             value={startDate.month}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     month: value,
@@ -361,6 +386,7 @@ const YearControl = ({ startDate, endDate, onChange }) => (
         />
         at <HourSelect
             value={startDate.hour}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     month: startDate.month,
@@ -371,6 +397,7 @@ const YearControl = ({ startDate, endDate, onChange }) => (
             })}
         />:<MinuteSelect
             value={startDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 startDate: {
                     month: startDate.month,
@@ -382,6 +409,7 @@ const YearControl = ({ startDate, endDate, onChange }) => (
         /><br />
         To <DaySelect
             value={endDate.day}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     month: endDate.month,
@@ -393,6 +421,7 @@ const YearControl = ({ startDate, endDate, onChange }) => (
         />
         <MonthSelect
             value={endDate.month}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     month: value,
@@ -404,6 +433,7 @@ const YearControl = ({ startDate, endDate, onChange }) => (
         />
         at <HourSelect
             value={endDate.hour}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     month: endDate.month,
@@ -414,6 +444,7 @@ const YearControl = ({ startDate, endDate, onChange }) => (
             })}
         />:<MinuteSelect
             value={endDate.minute}
+            disabled={disabled}
             onChange={(value) => onChange({
                 endDate: {
                     month: endDate.month,
@@ -481,7 +512,7 @@ const defaultDates = [
     },
 ]
 
-export class RuleComponent extends React.Component {
+export class RuleComponent extends React.PureComponent {
     onRemove = () => {
         const { onRemove, rule } = this.props
 
@@ -510,7 +541,7 @@ export class RuleComponent extends React.Component {
     }
 
     render() {
-        const { isHovered, rule, isActive } = this.props
+        const { isHovered, rule, disabled } = this.props
 
         return (
             <div className={styles.ruleContainer}>
@@ -519,6 +550,7 @@ export class RuleComponent extends React.Component {
                         type="button"
                         onClick={this.onRemove}
                         className={styles.removeButton}
+                        disabled={disabled}
                     >
                         <SvgIcon name="crossHeavy" className={styles.removeIcon} />
                     </button>
@@ -528,12 +560,12 @@ export class RuleComponent extends React.Component {
                 <ValueInput
                     value={rule.value}
                     onChange={this.onValueChange}
-                    disabled={!!isActive}
+                    disabled={disabled}
                 />
                 <br />
                 Every
                 &nbsp;
-                <Select value={rule.intervalType} onChange={this.onIntervalChange}>
+                <Select value={rule.intervalType} onChange={this.onIntervalChange} disabled={disabled}>
                     {Object.keys(schedulerOptions).map((schedulerOption) => (
                         <option
                             key={schedulerOption}
@@ -545,19 +577,19 @@ export class RuleComponent extends React.Component {
                 </Select>
                 <br />
                 {rule.intervalType === IntervalTypes.HOUR && (
-                    <HourControl onChange={this.onUpdateDates} {...rule} />
+                    <HourControl disabled={disabled} onChange={this.onUpdateDates} {...rule} />
                 )}
                 {rule.intervalType === IntervalTypes.DAY && (
-                    <DayControl onChange={this.onUpdateDates} {...rule} />
+                    <DayControl disabled={disabled} onChange={this.onUpdateDates} {...rule} />
                 )}
                 {rule.intervalType === IntervalTypes.WEEK && (
-                    <WeekControl onChange={this.onUpdateDates} {...rule} />
+                    <WeekControl disabled={disabled} onChange={this.onUpdateDates} {...rule} />
                 )}
                 {rule.intervalType === IntervalTypes.MONTH && (
-                    <MonthControl onChange={this.onUpdateDates} {...rule} />
+                    <MonthControl disabled={disabled} onChange={this.onUpdateDates} {...rule} />
                 )}
                 {rule.intervalType === IntervalTypes.YEAR && (
-                    <YearControl onChange={this.onUpdateDates} {...rule} />
+                    <YearControl disabled={disabled} onChange={this.onUpdateDates} {...rule} />
                 )}
             </div>
         )
@@ -598,7 +630,7 @@ const changeRule = (rules, id, properties) => rules.map((r) => {
     return r
 })
 
-export default class SchedulerModule extends React.Component {
+export default class SchedulerModule extends React.PureComponent {
     state = {
         defaultValue: undefined,
         rules: undefined,
@@ -668,12 +700,13 @@ export default class SchedulerModule extends React.Component {
     }
 
     render() {
-        const { isActive } = this.props
+        const { isEditable } = this.props
         const { rules, defaultValue } = this.state
 
         return (
             <div className={styles.schedulerContainer}>
                 <SortableList
+                    disabled={!isEditable}
                     distance={1} /* This will allow clicks to pass through */
                     onSortEnd={this.onSortEnd}
                     lockAxis="y"
@@ -684,6 +717,7 @@ export default class SchedulerModule extends React.Component {
                             key={rule.id}
                             onChange={this.onChangeRule}
                             onRemove={this.onRemoveRule}
+                            disabled={!isEditable}
                             rule={rule}
                         />
                     ))}
@@ -695,7 +729,7 @@ export default class SchedulerModule extends React.Component {
                         <ValueInput
                             value={defaultValue}
                             onChange={this.onDefaultValueChange}
-                            disabled={!!isActive}
+                            disabled={!isEditable}
                         />
                     </div>
                     <div className={styles.addButtonContainer}>
@@ -703,6 +737,7 @@ export default class SchedulerModule extends React.Component {
                             type="button"
                             className={styles.addButton}
                             onClick={this.onAddRule}
+                            disabled={!isEditable}
                         >
                             + Add
                         </button>

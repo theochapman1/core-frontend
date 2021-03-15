@@ -1,19 +1,55 @@
 // @flow
 
-import React from 'react'
-import copy from 'copy-to-clipboard'
-import cx from 'classnames'
-import { I18n, Translate } from 'react-redux-i18n'
-import { Row, Col } from 'reactstrap'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
+import styled from 'styled-components'
 
-import type { ResourcePermission } from '$shared/flowtype/resource-key-types'
-import TextInput from '$shared/components/TextInput'
-import Meatball from '$shared/components/Meatball'
-import DropdownActions from '$shared/components/DropdownActions'
-import Dropdown from '$shared/components/Dropdown'
+import Popover from '$shared/components/Popover'
+import { truncate } from '$shared/utils/text'
+import Notification from '$shared/utils/Notification'
+import { NotificationIcon } from '$shared/utils/constants'
+import useIsMounted from '$shared/hooks/useIsMounted'
+import useCopy from '$shared/hooks/useCopy'
+import Label from '$ui/Label'
+import WithInputActions from '$shared/components/WithInputActions'
+import Text from '$ui/Text'
+import UnstyledStatusIcon from '$shared/components/StatusIcon'
+import KeyFieldEditor, { type LabelType, keyValues } from './KeyFieldEditor'
 
-import KeyFieldEditor from './KeyFieldEditor'
-import styles from './keyField.pcss'
+const KeyFieldContainer = styled.div`
+    position: relative;
+`
+
+const KeyNameHolder = styled.div``
+
+const StatusIcon = styled(UnstyledStatusIcon)``
+
+const LabelWrapper = styled.div`
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    ${StatusIcon} {
+        width: 8px;
+        height: 8px;
+        margin-right: 8px;
+        margin-bottom: 8px;
+    }
+
+    ${Label} {
+        flex-grow: 1;
+        margin-right: 0.5um;
+        position: relative;
+    }
+
+    ${KeyNameHolder} {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        position: absolute;
+        left: 0;
+        top: 0;
+    }
+`
 
 type Props = {
     keyName: string,
@@ -21,220 +57,177 @@ type Props = {
     hideValue?: boolean,
     className?: string,
     allowEdit?: boolean,
-    onSave?: (?string, ?string, ?ResourcePermission) => Promise<void>,
+    onSave?: (?string, ?string) => Promise<void>,
     allowDelete?: boolean,
     disableDelete?: boolean,
     onDelete?: () => Promise<void>,
-    showPermissionType?: boolean,
-    permission?: ResourcePermission,
+    labelType: LabelType,
+    onToggleEditor?: (boolean) => void,
+    labelComponent?: any,
+    active?: boolean,
 }
 
-type State = {
-    waiting: boolean,
-    hidden: boolean,
-    editing: boolean,
-    menuOpen: boolean,
-    error: ?string,
-    permission: ?ResourcePermission,
-}
+const includeIf = (condition: boolean, elements: Array<any>) => (condition ? elements : [])
 
-class KeyField extends React.Component<Props, State> {
-    constructor(props: Props) {
-        super(props)
+const UnstyledKeyField = ({
+    keyName,
+    value,
+    hideValue,
+    allowEdit,
+    onSave: onSaveProp,
+    allowDelete,
+    disableDelete,
+    onDelete: onDeleteProp,
+    labelType,
+    onToggleEditor: onToggleEditorProp,
+    labelComponent,
+    active,
+    ...props
+}: Props) => {
+    const [waiting, setWaiting] = useState(false)
+    const [hidden, setHidden] = useState(!!hideValue)
+    const [editing, setEditing] = useState(false)
+    const [error, setError] = useState(undefined)
 
-        this.state = {
-            waiting: false,
-            hidden: !!props.hideValue,
-            editing: false,
-            menuOpen: false,
-            error: undefined,
-            permission: props.permission,
+    const isMounted = useIsMounted()
+    const { copy } = useCopy()
+
+    const toggleHidden = useCallback(() => {
+        setHidden((wasHidden) => !wasHidden)
+    }, [])
+
+    useEffect(() => {
+        if (onToggleEditorProp) {
+            onToggleEditorProp(editing)
         }
-    }
+    }, [editing, onToggleEditorProp])
 
-    componentWillUnmount() {
-        this.unmounted = true
-    }
-
-    unmounted: boolean = false
-
-    toggleHidden = () => {
-        this.setState(({ hidden }) => ({
-            hidden: !hidden,
-        }))
-    }
-
-    onCopy = () => {
-        copy(this.props.value)
-    }
-
-    onCancel = () => {
-        this.setState({
-            editing: false,
-            menuOpen: false,
+    const notify = useCallback(() => {
+        Notification.push({
+            title: `${keyValues[labelType]} copied`,
+            icon: NotificationIcon.CHECKMARK,
         })
-    }
+    }, [labelType])
 
-    onSave = (keyName: ?string, value: ?string, permission: ?ResourcePermission) => {
-        const { allowEdit, onSave } = this.props
+    const onCopy = useCallback(() => {
+        copy(value || '')
+        notify()
+    }, [copy, value, notify])
 
+    const onCancel = useCallback(() => {
+        setEditing(false)
+    }, [])
+
+    const onSave = useCallback(async (keyName: ?string, value: ?string) => {
         if (allowEdit) {
-            if (onSave) {
-                this.setState({
-                    waiting: true,
-                    error: null,
-                })
-                onSave(keyName, value, permission)
-                    .then(() => {
-                        if (!this.unmounted) {
-                            this.setState({
-                                permission,
-                                waiting: false,
-                                editing: false,
-                                menuOpen: false,
-                                error: null,
-                            })
-                        }
-                    }, (error) => {
-                        if (!this.unmounted) {
-                            this.setState({
-                                error: error.message,
-                                waiting: false,
-                            })
-                        }
-                    })
+            setError(undefined)
+
+            if (onSaveProp) {
+                setWaiting(true)
+
+                try {
+                    await onSaveProp(keyName, value)
+
+                    if (isMounted()) {
+                        setEditing(false)
+                        setError(undefined)
+                    }
+                } catch (e) {
+                    if (isMounted()) {
+                        setError(undefined)
+                    }
+                } finally {
+                    setWaiting(false)
+                }
             } else {
-                this.setState({
-                    editing: false,
-                    waiting: false,
-                    menuOpen: false,
-                    error: null,
-                })
+                setEditing(false)
             }
         }
-    }
+    }, [allowEdit, onSaveProp, isMounted])
 
-    onDelete = () => {
-        const { allowDelete, onDelete } = this.props
-        if (allowDelete && onDelete) {
-            onDelete()
+    const onDelete = useCallback(() => {
+        if (allowDelete && onDeleteProp) {
+            onDeleteProp()
         }
-    }
+    }, [allowDelete, onDeleteProp])
 
-    onMenuToggle = (menuOpen: boolean) => {
-        this.setState({
-            menuOpen,
-        })
-    }
+    const onEdit = useCallback(() => {
+        setEditing(true)
+    }, [])
 
-    onEdit = () => {
-        this.setState({
-            editing: true,
-        })
-    }
+    const revealAction = useMemo(() => (
+        <Popover.Item key="reveal" onClick={toggleHidden}>
+            {hidden ? 'Reveal' : 'Conceal'}
+        </Popover.Item>
+    ), [toggleHidden, hidden])
 
-    onPermissionChange = (permissionValue: string) => {
-        const { value, keyName } = this.props
-        // Value needs to be checked to satisfy Flow
-        const permission: ?ResourcePermission = ['read', 'write', 'share'].find((p) => p === permissionValue)
-        if (permission) {
-            this.setState({
-                permission,
-            }, () => {
-                this.onSave(keyName, value, permission)
-            })
-        }
-    }
+    const editAction = useMemo(() => (
+        <Popover.Item key="edit" onClick={onEdit}>
+            Edit
+        </Popover.Item>
+    ), [onEdit])
 
-    render = () => {
-        const {
-            hideValue,
-            keyName,
-            value,
-            className,
-            allowDelete,
-            allowEdit,
-            disableDelete,
-            showPermissionType,
-        } = this.props
-        const {
-            waiting,
-            hidden,
-            editing,
-            menuOpen,
-            error,
-            permission,
-        } = this.state
+    const deleteAction = useMemo(() => (
+        <Popover.Item key="delete" onClick={onDelete} disabled={disableDelete}>
+            Delete
+        </Popover.Item>
+    ), [onDelete, disableDelete])
 
-        return !editing ? (
-            <Row>
-                <Col md={12} lg={11}>
-                    <div
-                        className={cx(styles.container, className, {
-                            [styles.withMenu]: menuOpen,
-                        })}
-                    >
-                        <TextInput label={keyName} value={value} readOnly type={hidden ? 'password' : 'text'} />
-                        <div className={styles.actions}>
-                            <DropdownActions
-                                onMenuToggle={this.onMenuToggle}
-                                title={<Meatball alt={I18n.t('userpages.keyField.options')} blue />}
-                                noCaret
-                            >
-                                {!!hideValue && (
-                                    <DropdownActions.Item onClick={this.toggleHidden}>
-                                        <Translate value={`userpages.keyField.${hidden ? 'reveal' : 'conceal'}`} />
-                                    </DropdownActions.Item>
-                                )}
-                                <DropdownActions.Item onClick={this.onCopy}>
-                                    <Translate value="userpages.keyField.copy" />
-                                </DropdownActions.Item>
-                                {!!allowEdit && (
-                                    <DropdownActions.Item onClick={this.onEdit}>
-                                        <Translate value="userpages.keyField.edit" />
-                                    </DropdownActions.Item>
-                                )}
-                                {!!allowDelete && (
-                                    <DropdownActions.Item onClick={this.onDelete} disabled={disableDelete}>
-                                        <Translate value="userpages.keyField.delete" />
-                                    </DropdownActions.Item>
-                                )}
-                            </DropdownActions>
+    const inputActions = useMemo(() => ([
+        ...includeIf(!!hideValue, [revealAction]),
+        <Popover.Item key="copy" onClick={onCopy}>
+            Copy
+        </Popover.Item>,
+        ...includeIf(!!allowEdit, [editAction]),
+        ...includeIf(!!allowDelete, [deleteAction]),
+    ]), [hideValue, revealAction, onCopy, allowEdit, editAction, allowDelete, deleteAction])
+
+    return (
+        <div {...props}>
+            {!editing ? (
+                <KeyFieldContainer>
+                    <LabelWrapper>
+                        {!!active && (
+                            <StatusIcon status={StatusIcon.OK} />
+                        )}
+                        <Label htmlFor="keyName">
+                            &zwnj;
+                            <KeyNameHolder>
+                                {keyName}
+                            </KeyNameHolder>
+                        </Label>
+                        <div>
+                            {labelComponent}
                         </div>
-                    </div>
-                    {showPermissionType && (
-                        <div className={styles.permissionDropdownContainer}>
-                            <Dropdown
-                                title=""
-                                onChange={this.onPermissionChange}
-                                className={styles.permissionDropdown}
-                                selectedItem={permission}
-                            >
-                                <Dropdown.Item key="read" value="read" onClick={(val) => this.onPermissionChange(val.toString())}>
-                                    Read
-                                </Dropdown.Item>
-                                <Dropdown.Item key="write" value="write" onClick={(val) => this.onPermissionChange(val.toString())}>
-                                    Write
-                                </Dropdown.Item>
-                            </Dropdown>
-                        </div>
-                    )}
-                </Col>
-                <Col md={12} lg={1} className={styles.offsetColOverride} />
-            </Row>
-        ) : (
-            <KeyFieldEditor
-                keyName={keyName}
-                value={value}
-                onCancel={this.onCancel}
-                onSave={this.onSave}
-                waiting={waiting}
-                error={error}
-                showPermissionType={showPermissionType}
-                permission={permission}
-            />
-        )
-    }
+                    </LabelWrapper>
+                    <WithInputActions actions={inputActions}>
+                        <Text
+                            value={value && truncate(value)}
+                            readOnly
+                            type={hidden ? 'password' : 'text'}
+                        />
+                    </WithInputActions>
+                </KeyFieldContainer>
+            ) : (
+                <KeyFieldEditor
+                    keyName={keyName}
+                    value={value}
+                    onCancel={onCancel}
+                    onSave={onSave}
+                    waiting={waiting}
+                    error={error}
+                    labelType={labelType}
+                />
+            )}
+        </div>
+    )
 }
+
+UnstyledKeyField.defaultProps = {
+    labelType: 'apiKey',
+}
+
+const KeyField = styled(UnstyledKeyField)`
+`
 
 export default KeyField

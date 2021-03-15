@@ -1,5 +1,4 @@
 .buttons {
-  padding: 20px 0;
   display: flex;
   justify-content: flex-end;
 
@@ -11,20 +10,15 @@
   display: none;
 }
 
-.buttons > :global(.btn) {
-  font-size: 14px;
-  min-width: 96px;
+.buttons > * {
   padding-right: 15px;
   padding-left: 15px;
 }
 
-.buttons > :global(.btn) + :global(.btn) {
-  margin-left: 12px;
+.buttons > :not(.link) {
+  min-width: 7rem;
 }
 
-@media (--xs) {
-  .buttons {
-    padding: 20px 0 !important;
-    justify-content: center;
-  }
+.buttons > * + * {
+  margin-left: 1rem;
 }

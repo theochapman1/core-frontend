@@ -1,7 +1,6 @@
 // @flow
 
 import EventEmitter from 'events'
-import { I18n } from 'react-redux-i18n'
 
 import getWeb3, { getPublicWeb3 } from '$shared/web3/web3Provider'
 import type { StreamrWeb3 as StreamrWeb3Type } from '$shared/web3/web3Provider'
@@ -21,7 +20,7 @@ export const events = {
 }
 
 export type Event = $Values<typeof events>
-export type Handler = (any, any) => void
+export type Handler = (any, any) => void | Promise<void>
 
 const WEB3_POLL_INTERVAL = 1000 // 1s
 const NETWORK_POLL_INTERVAL = 1000 // 1s
@@ -145,11 +144,7 @@ export default class Web3Poller {
             }, () => {
                 this.web3.getDefaultAccount()
                     .catch((err) => {
-                        if (this.account) {
-                            this.emitter.emit(events.NETWORK_ERROR, err)
-                        } else {
-                            warnOnce(err)
-                        }
+                        this.emitter.emit(events.NETWORK_ERROR, err)
                     })
             })
     )
@@ -204,7 +199,7 @@ export default class Web3Poller {
                     this.emitter.emit(
                         events.TRANSACTION_ERROR,
                         txHash,
-                        new TransactionError(I18n.t('error.txFailed'), receipt),
+                        new TransactionError('Transaction failed', receipt),
                     )
                 }
             }

@@ -1,150 +1,181 @@
 // @flow
 
-import React, { Component } from 'react'
-import { connect } from 'react-redux'
-import { I18n } from 'react-redux-i18n'
-import { push } from 'react-router-redux'
-import cx from 'classnames'
-import Helmet from 'react-helmet'
-import MediaQuery from 'react-responsive'
+import React, { useCallback, useState, useEffect } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { push } from 'connected-react-router'
+import styled from 'styled-components'
 
-import { saveCurrentUser } from '$shared/modules/user/actions'
+import { CoreHelmet } from '$shared/components/Helmet'
+import { Provider as PendingProvider } from '$shared/contexts/Pending'
+import { saveCurrentUser, getUserData } from '$shared/modules/user/actions'
 import Toolbar from '$shared/components/Toolbar'
-import TOCPage from '$userpages/components/TOCPage'
-import ConfigureAnchorOffset from '$shared/components/ConfigureAnchorOffset'
-import { lg } from '$app/scripts/breakpoints'
-import links from '$shared/../links'
+import TOCPage from '$shared/components/TOCPage'
+import { usePending } from '$shared/hooks/usePending'
+import useIsMounted from '$shared/hooks/useIsMounted'
+import { selectUserData } from '$shared/modules/user/selectors'
+import useEthereumIdentities from '$shared/modules/integrationKey/hooks/useEthereumIdentities'
+import usePrivateKeys from '$shared/modules/integrationKey/hooks/usePrivateKeys'
 
-import Layout from '../Layout'
+import Layout from '$shared/components/Layout'
+import CoreLayout from '$shared/components/Layout/Core'
+import LoadingIndicator from '$shared/components/LoadingIndicator'
+import Notification from '$shared/utils/Notification'
+import { NotificationIcon } from '$shared/utils/constants'
+import Nav from '$shared/components/Layout/Nav'
+import routes from '$routes'
 import ProfileSettings from './ProfileSettings'
-import APICredentials from './APICredentials'
 import IntegrationKeyHandler from './IntegrationKeyHandler'
 import IdentityHandler from './IdentityHandler/index'
 import DeleteAccount from './DeleteAccount'
+
 import styles from './profilePage.pcss'
-import routes from '$routes'
 
-type StateProps = {}
+export const ProfilePage = () => {
+    const { isPending: isSavePending, wrap } = usePending('user.SAVE')
+    const { isPending: isAddIdentityPending } = usePending('user.ADD_IDENTITY')
+    const { isPending: isAddPrivateKeyPending } = usePending('user.ADD_PRIVATE_KEY')
+    const { isPending: isDeleteAccountPending } = usePending('user.DELETE_ACCOUNT')
+    const { isPending: isAvatarUploadPending } = usePending('user.UPLOAD_AVATAR')
+    const isMounted = useIsMounted()
+    const dispatch = useDispatch()
+    const { fetching: isLoadingEthIdentities } = useEthereumIdentities()
+    const { fetching: isLoadingPrivateKeys } = usePrivateKeys()
 
-type DispatchProps = {
-    saveCurrentUser: () => Promise<void>,
-    redirectToUserPages: () => void,
-}
+    const doSaveCurrentUser = useCallback(() => dispatch(saveCurrentUser()), [dispatch])
+    const redirectToUserPages = useCallback(() => dispatch(push(routes.core())), [dispatch])
 
-type Props = StateProps & DispatchProps
-
-type State = {
-    saving: boolean,
-}
-
-export class ProfilePage extends Component<Props, State> {
-    state = {
-        saving: false,
-    }
-
-    unmounted: boolean = false
-
-    componentWillUnmount() {
-        this.unmounted = true
-    }
-
-    onSave = () => {
-        const { saveCurrentUser, redirectToUserPages } = this.props
-        this.setState({
-            saving: true,
-        }, async () => {
+    const onSave = useCallback(async () => (
+        wrap(async () => {
             try {
-                await saveCurrentUser()
+                await doSaveCurrentUser()
 
-                if (!this.unmounted) {
-                    this.setState({
-                        saving: false,
-                    }, redirectToUserPages)
+                if (isMounted()) {
+                    Notification.push({
+                        title: 'Your settings have been saved',
+                        icon: NotificationIcon.CHECKMARK,
+                    })
+
+                    redirectToUserPages()
                 }
             } catch (e) {
                 console.warn(e)
 
-                if (!this.unmounted) {
-                    this.setState({
-                        saving: false,
-                    })
-                }
+                Notification.push({
+                    title: e.message,
+                    icon: NotificationIcon.ERROR,
+                })
             }
         })
-    }
+    ), [wrap, doSaveCurrentUser, redirectToUserPages, isMounted])
 
-    render() {
-        const { saving } = this.state
-        return (
-            <Layout noHeader noFooter>
-                <Helmet title={`Streamr Core | ${I18n.t('userpages.title.profile')}`} />
-                <div className={styles.profilePage}>
-                    <MediaQuery minWidth={lg.min}>
-                        <ConfigureAnchorOffset value={-80} />
-                    </MediaQuery>
-                    <Toolbar
-                        altMobileLayout
-                        actions={{
-                            cancel: {
-                                title: I18n.t('userpages.profilePage.toolbar.cancel'),
-                                color: 'link',
-                                linkTo: links.userpages.main,
-                            },
-                            saveChanges: {
-                                title: I18n.t('userpages.profilePage.toolbar.saveAndExit'),
-                                color: 'primary',
-                                onClick: this.onSave,
-                                disabled: saving,
-                                spinner: saving,
-                            },
-                        }}
-                    />
-                    <div className={cx('container', styles.containerOverrides)}>
-                        <TOCPage title={I18n.t('userpages.profilePage.pageTitle')}>
-                            <TOCPage.Section id="profile" title={I18n.t('userpages.profilePage.profile.title')}>
-                                <ProfileSettings />
-                            </TOCPage.Section>
-                            <TOCPage.Section
-                                id="api-keys"
-                                title={I18n.t('userpages.profilePage.apiCredentials.title')}
-                                linkTitle={I18n.t('userpages.profilePage.apiCredentials.linkTitle')}
-                            >
-                                <APICredentials />
-                            </TOCPage.Section>
-                            <TOCPage.Section
-                                id="ethereum-accounts"
-                                title={I18n.t('userpages.profilePage.ethereumAddress.title')}
-                                linkTitle={I18n.t('userpages.profilePage.ethereumAddress.linkTitle')}
-                            >
-                                <IdentityHandler />
-                            </TOCPage.Section>
-                            <TOCPage.Section
-                                id="private-keys"
-                                title={I18n.t('userpages.profilePage.ethereumPrivateKeys.title')}
-                                linkTitle={I18n.t('userpages.profilePage.ethereumPrivateKeys.linkTitle')}
-                            >
-                                <IntegrationKeyHandler />
-                            </TOCPage.Section>
-                            <TOCPage.Section
-                                id="delete-account"
-                                title={I18n.t('userpages.profilePage.deleteAccount.title')}
-                                linkTitle={I18n.t('userpages.profilePage.deleteAccount.linkTitle')}
-                            >
-                                <DeleteAccount />
-                            </TOCPage.Section>
-                        </TOCPage>
-                    </div>
-                </div>
-            </Layout>
-        )
-    }
+    const isLoading = !!(
+        isSavePending ||
+        isAddIdentityPending ||
+        isAddPrivateKeyPending ||
+        isDeleteAccountPending ||
+        isAvatarUploadPending ||
+        isLoadingEthIdentities ||
+        isLoadingPrivateKeys
+    )
+
+    return (
+        <CoreLayout
+            nav={(
+                <Nav noWide />
+            )}
+            navComponent={(
+                <Toolbar
+                    altMobileLayout
+                    actions={{
+                        cancel: {
+                            title: 'Cancel',
+                            kind: 'link',
+                            linkTo: routes.core(),
+                        },
+                        saveChanges: {
+                            title: 'Save & Exit',
+                            kind: 'primary',
+                            onClick: onSave,
+                            disabled: isSavePending,
+                            spinner: isSavePending,
+                        },
+                    }}
+                />
+            )}
+            loading={isLoading}
+            loadingClassname={styles.loadingIndicator}
+        >
+            <CoreHelmet title="Profile" />
+            <TOCPage title="Settings">
+                <TOCPage.Section id="profile" title="Profile">
+                    <ProfileSettings />
+                </TOCPage.Section>
+                <TOCPage.Section
+                    id="ethereum-accounts"
+                    title="Ethereum Accounts"
+                    linkTitle="ETH Accounts"
+                >
+                    <IdentityHandler />
+                </TOCPage.Section>
+                <TOCPage.Section
+                    id="private-keys"
+                    title="Ethereum keys for canvases"
+                    linkTitle="ETH canvas keys"
+                >
+                    <IntegrationKeyHandler />
+                </TOCPage.Section>
+                <TOCPage.Section
+                    id="delete-account"
+                    title="Delete Streamr Account"
+                    linkTitle="Delete account"
+                >
+                    <DeleteAccount />
+                </TOCPage.Section>
+            </TOCPage>
+        </CoreLayout>
+    )
 }
 
-const mapStateToProps = (): StateProps => ({})
+const StyledLoadingIndicator = styled(LoadingIndicator)`
+  top: 2px;
+`
 
-const mapDispatchToProps = (dispatch: Function): DispatchProps => ({
-    saveCurrentUser: () => dispatch(saveCurrentUser()),
-    redirectToUserPages: () => dispatch(push(routes.userPages())),
-})
+const LoadingView = () => (
+    <Layout>
+        <StyledLoadingIndicator loading />
+    </Layout>
+)
 
-export default connect(mapStateToProps, mapDispatchToProps)(ProfilePage)
+const ProfileWrap = () => {
+    const user = useSelector(selectUserData)
+    const dispatch = useDispatch()
+    const hasUser = !!user
+    const [userLoaded, setUserLoaded] = useState(false)
+
+    const getCurrentUser = useCallback(() => {
+        dispatch(getUserData())
+    }, [dispatch])
+
+    useEffect(() => {
+        if (!hasUser && !userLoaded) {
+            getCurrentUser()
+            setUserLoaded(true)
+        }
+    }, [hasUser, userLoaded, getCurrentUser])
+
+    if (!user) {
+        return <LoadingView />
+    }
+
+    const key = (!!user && user.username) || ''
+
+    return (
+        <ProfilePage key={key} />
+    )
+}
+
+export default () => (
+    <PendingProvider name="profile">
+        <ProfileWrap />
+    </PendingProvider>
+)

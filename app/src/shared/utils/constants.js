@@ -8,12 +8,20 @@
  */
 
 // The order of these must be the same than in the smart contract
-export const currencies = {
+export const contractCurrencies = {
     DATA: 'DATA',
     USD: 'USD',
 }
 
-export const DEFAULT_CURRENCY = currencies.DATA
+export const paymentCurrencies = {
+    DATA: 'DATA',
+    ETH: 'ETH',
+    DAI: 'DAI',
+}
+
+export const DEFAULT_CURRENCY = contractCurrencies.DATA
+
+export const MIN_UNISWAP_AMOUNT_USD = 0.1
 
 // The order of these must be the same than in the smart contract
 export const productStates = {
@@ -48,22 +56,28 @@ export const transactionStates = {
 }
 
 export const transactionTypes = {
-    SET_ALLOWANCE: 'setAllowance',
-    RESET_ALLOWANCE: 'resetAllowance',
-    PURCHASE: 'purchase',
+    SET_DATA_ALLOWANCE: 'setDataAllowance',
+    RESET_DATA_ALLOWANCE: 'resetDataAllowance',
+    SET_DAI_ALLOWANCE: 'setDaiAllowance',
+    RESET_DAI_ALLOWANCE: 'resetDaiAllowance',
+    SUBSCRIPTION: 'subscription',
     CREATE_CONTRACT_PRODUCT: 'createContractProduct',
     UPDATE_CONTRACT_PRODUCT: 'updateContractProduct',
     REDEPLOY_PRODUCT: 'redeployProduct',
     UNDEPLOY_PRODUCT: 'undeployProduct',
     PAYMENT: 'payment',
+    DEPLOY_DATA_UNION: 'deployDataUnion',
+    UPDATE_ADMIN_FEE: 'updateAdminFee',
+    SET_REQUIRES_WHITELIST: 'setRequiresWhitelist',
+    WHITELIST_APPROVE: 'whitelistApprove',
+    WHITELIST_REJECT: 'whitelistReject',
 }
 
 export const gasLimits = {
-    DEFAULT: 3e5,
-    CREATE_PRODUCT: 3e5,
-    BUY_PRODUCT: 1e5,
-    DELETE_PRODUCT: 5e4,
-    APPROVE: 5e4,
+    BUY_PRODUCT: 3e5,
+    BUY_PRODUCT_WITH_ETH: 5e5,
+    BUY_PRODUCT_WITH_ERC20: 6e5,
+    APPROVE: 7e4,
 }
 
 export const dialogAutoCloseTimeout = 2000 // in milliseconds
@@ -84,11 +98,13 @@ export const NotificationIcon = {
 }
 
 export const ProgrammingLanguages = {
-    JAVASCRIPT: 'Javascript',
-    JAVA: 'Java',
+    JAVASCRIPT: 'javascript',
+    JAVA: 'java',
 }
 
 export const StreamrClientRepositories = {
     [ProgrammingLanguages.JAVASCRIPT]: 'https://github.com/streamr-dev/streamr-client-javascript',
     [ProgrammingLanguages.JAVA]: 'https://github.com/streamr-dev/streamr-client-java',
 }
+
+export const dataUnionMemberLimit = parseInt(process.env.DATA_UNION_PUBLISH_MEMBER_LIMIT, 10) || 0

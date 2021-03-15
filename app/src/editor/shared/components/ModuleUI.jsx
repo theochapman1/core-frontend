@@ -4,6 +4,9 @@
 
 import React from 'react'
 
+import useModule from '$editor/canvas/components/ModuleRenderer/useModule'
+import useIsCanvasRunning from '$editor/canvas/hooks/useIsCanvasRunning'
+import useModuleApi from '$editor/canvas/components/ModuleRenderer/useModuleApi'
 import TableModule from './modules/Table'
 import ChartModule from './modules/Chart'
 import StreamrButton from './modules/Button'
@@ -45,17 +48,49 @@ const Widgets = {
     StreamrSwitcher,
 }
 
-export default ({ autoSize, ...props }) => (
-    <RunStateLoader {...props}>
-        {(props) => {
-            const module = props.module || {}
-            const Module = module.widget ? Widgets[module.widget] : Modules[module.jsModule]
+const ModuleUI = ({
+    canvasId, dashboardId, moduleHash, autoSize, ...props
+}) => {
+    const { module: originalModule, canvas } = useModule()
+    const { items } = canvas
+    const isDashboard = !!items
+    const api = useModuleApi()
+    const canvasIsRunning = useIsCanvasRunning()
+    const isRunning = isDashboard || canvasIsRunning
 
-            if (!Module) {
-                return null
-            }
+    return (
+        <RunStateLoader
+            {...props}
+            moduleHash={originalModule.hash || moduleHash}
+            isActive={isRunning}
+            canvasId={canvasId || canvas.id}
+            dashboardId={dashboardId}
+        >
+            {(props) => {
+                const { module: runtimeModule } = props
+                const loadedModule = runtimeModule || originalModule
 
-            return <Module {...props} />
-        }}
-    </RunStateLoader>
-)
+                if (!loadedModule) {
+                    return null
+                }
+
+                const Module = loadedModule.widget ? Widgets[loadedModule.widget] : Modules[loadedModule.jsModule]
+
+                if (!Module) {
+                    return null
+                }
+
+                return (
+                    <Module
+                        {...props}
+                        moduleHash={loadedModule.hash}
+                        module={loadedModule}
+                        api={api}
+                    />
+                )
+            }}
+        </RunStateLoader>
+    )
+}
+
+export default ModuleUI

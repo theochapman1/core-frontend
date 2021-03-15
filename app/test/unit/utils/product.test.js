@@ -1,6 +1,8 @@
 import assert from 'assert-diff'
 import BN from 'bignumber.js'
 
+import { productStates } from '$shared/utils/constants'
+
 import * as all from '$mp/utils/product'
 
 describe('product utils', () => {
@@ -19,6 +21,35 @@ describe('product utils', () => {
                 pricePerSecond: 1000,
             }
             assert.equal(all.isPaidProduct(product), true)
+        })
+    })
+
+    describe('isDataUnionProduct', () => {
+        it('detects data union product from object', () => {
+            const product1 = {
+                id: 'text',
+                type: 'DATAUNION',
+            }
+            assert.equal(all.isDataUnionProduct(product1), true)
+            const product2 = {
+                id: 'text',
+                type: 'NORMAL',
+            }
+            assert.equal(all.isDataUnionProduct(product2), false)
+        })
+
+        it('detects data union product from empty object', () => {
+            assert.equal(all.isDataUnionProduct({}), false)
+        })
+
+        it('detects data union product from value', () => {
+            assert.equal(all.isDataUnionProduct('DATAUNION'), true)
+            assert.equal(all.isDataUnionProduct('NORMAL'), false)
+        })
+
+        it('detects data union product from empty value', () => {
+            assert.equal(all.isDataUnionProduct(''), false)
+            assert.equal(all.isDataUnionProduct(), false)
         })
     })
 
@@ -133,7 +164,7 @@ describe('product utils', () => {
         })
     })
 
-    describe('mapProductToApi', () => {
+    describe('mapProductToPostApi', () => {
         it('maps product properties', () => {
             const inProduct = {
                 name: 'test',
@@ -146,7 +177,7 @@ describe('product utils', () => {
                 priceCurrency: 'DATA',
             }
 
-            assert.deepStrictEqual(all.mapProductToApi(inProduct), outProduct)
+            assert.deepStrictEqual(all.mapProductToPostApi(inProduct), outProduct)
         })
 
         it('rejects invalid objects', () => {
@@ -156,7 +187,119 @@ describe('product utils', () => {
                 priceCurrency: 'EUR',
             }
 
-            assert.throws(() => all.mapProductToApi(inProduct))
+            assert.throws(() => all.mapProductToPostApi(inProduct))
+        })
+    })
+
+    describe('mapProductToPutApi', () => {
+        it('returns the same object for unpaid product', () => {
+            const product = {
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                pricePerSecond: 0,
+                state: productStates.DEPLOYED,
+            }
+
+            expect(all.mapProductToPutApi(product)).toMatchObject({
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                pricePerSecond: '0',
+                state: productStates.DEPLOYED,
+            })
+        })
+
+        it('maps price for unpublished paid product', () => {
+            const product = {
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                pricePerSecond: 1,
+                beneficiaryAddress: '0x12334',
+                isFree: false,
+                state: productStates.NOT_DEPLOYED,
+            }
+
+            expect(all.mapProductToPutApi(product)).toMatchObject({
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                pricePerSecond: '1000000000',
+                beneficiaryAddress: '0x12334',
+                isFree: false,
+                state: productStates.NOT_DEPLOYED,
+            })
+        })
+
+        it('returns the pending changes for unpaid product', () => {
+            const product = {
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                state: productStates.DEPLOYED,
+                pendingChanges: {
+                    name: 'Better name',
+                },
+            }
+
+            expect(all.mapProductToPutApi(product)).toMatchObject({
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                state: productStates.DEPLOYED,
+                pendingChanges: {
+                    name: 'Better name',
+                },
+            })
+        })
+
+        it('returns removes smart contract fields for published paid product', () => {
+            const product = {
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                ownerAddress: '0x1234',
+                beneficiaryAddress: '0x1234',
+                pricePerSecond: '12345',
+                priceCurrency: 'USD',
+                minimumSubscriptionInSeconds: 0,
+                state: productStates.DEPLOYED,
+            }
+
+            expect(all.mapProductToPutApi(product)).toMatchObject({
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                state: productStates.DEPLOYED,
+            })
+        })
+
+        it('returns removes smart contract fields and returns pending changes for published paid product', () => {
+            const product = {
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                ownerAddress: '0x1234',
+                beneficiaryAddress: '0x1234',
+                pricePerSecond: '12345',
+                priceCurrency: 'USD',
+                minimumSubscriptionInSeconds: 0,
+                state: productStates.DEPLOYED,
+                pendingChanges: {
+                    name: 'Better name',
+                },
+            }
+
+            expect(all.mapProductToPutApi(product)).toMatchObject({
+                id: '1',
+                name: 'My Product',
+                description: 'My nice product',
+                state: productStates.DEPLOYED,
+                pendingChanges: {
+                    name: 'Better name',
+                },
+            })
         })
     })
 
@@ -171,6 +314,7 @@ describe('product utils', () => {
                 beneficiary: '0x1337',
                 currency: 0,
                 state: 0,
+                requiresWhitelist: true,
             }
             const outProduct = {
                 id: 1,
@@ -181,6 +325,7 @@ describe('product utils', () => {
                 beneficiaryAddress: '0x1337',
                 priceCurrency: 'DATA',
                 state: 'NOT_DEPLOYED',
+                requiresWhitelist: true,
             }
 
             assert.deepStrictEqual(all.mapProductFromContract(inProduct.id, inProduct), outProduct)
@@ -211,34 +356,6 @@ describe('product utils', () => {
         })
     })
 
-    describe('isPaidAndNotPublishedProduct', () => {
-        it('returns status', () => {
-            const prod1 = {
-                isFree: false,
-                state: 'NOT_DEPLOYED',
-            }
-            assert.equal(all.isPaidAndNotPublishedProduct(prod1), true)
-
-            const prod2 = {
-                isFree: false,
-                state: 'DEPLOYED',
-            }
-            assert.equal(all.isPaidAndNotPublishedProduct(prod2), false)
-
-            const prod3 = {
-                isFree: true,
-                state: 'DEPLOYED',
-            }
-            assert.equal(all.isPaidAndNotPublishedProduct(prod3), false)
-
-            const prod4 = {
-                isFree: true,
-                state: 'NOT_DEPLOYED',
-            }
-            assert.equal(all.isPaidAndNotPublishedProduct(prod4), false)
-        })
-    })
-
     describe('getValidId', () => {
         describe('when prefix = true or missing', () => {
             it('works with a prefixed id', () => {
@@ -250,8 +367,8 @@ describe('product utils', () => {
                 assert.equal(all.getValidId('1234', true), '0x1234')
             })
             it('throws with an invalid id', () => {
-                assert.throws(() => all.getValidId('test'), /is not valid hex/)
-                assert.throws(() => all.getValidId('test', true), /is not valid hex/)
+                assert.throws(() => all.getValidId('test'), /is not a valid hex/)
+                assert.throws(() => all.getValidId('test', true), /is not a valid hex/)
             })
         })
         describe('when prefix = false', () => {
@@ -262,7 +379,7 @@ describe('product utils', () => {
                 assert.equal(all.getValidId('1234', false), '1234')
             })
             it('throws with an invalid id', () => {
-                assert.throws(() => all.getValidId('test', false), /is not valid hex/)
+                assert.throws(() => all.getValidId('test', false), /is not a valid hex/)
             })
         })
     })

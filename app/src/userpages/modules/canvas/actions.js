@@ -1,97 +1,58 @@
-// @flow
-
-import { I18n } from 'react-redux-i18n'
-
-import type { ErrorInUi } from '$shared/flowtype/common-types'
-import type { Filter } from '../../flowtype/common-types'
-import type { Canvas, CanvasId } from '../../flowtype/canvas-types'
-import type { StoreState } from '../../flowtype/states/store-state'
-import { selectFilter } from './selectors'
-import { canvasSchema, canvasesSchema } from '$shared/modules/entities/schema'
+import { canvasesSchema } from '$shared/modules/entities/schema'
 import { handleEntities } from '$shared/utils/entities'
 import { getParamsForFilter } from '$userpages/utils/filters'
-import Notification from '$shared/utils/Notification'
-import { NotificationIcon } from '$shared/utils/constants'
+import { removeResourcePermissions } from '$userpages/modules/permission/actions'
+import { getResourcePermissions } from '$userpages/modules/permission/services'
 import * as api from '$shared/utils/api'
-
-const apiUrl = `${process.env.STREAMR_API_URL}/canvases`
+import routes from '$routes'
 
 export const GET_CANVASES_REQUEST = 'userpages/canvas/GET_CANVASES_REQUEST'
 export const GET_CANVASES_SUCCESS = 'userpages/canvas/GET_CANVASES_SUCCESS'
 export const GET_CANVASES_FAILURE = 'userpages/canvas/GET_CANVASES_FAILURE'
-export const GET_CANVAS_REQUEST = 'userpages/canvas/GET_CANVAS_REQUEST'
-export const GET_CANVAS_SUCCESS = 'userpages/canvas/GET_CANVAS_SUCCESS'
-export const GET_CANVAS_FAILURE = 'userpages/canvas/GET_CANVAS_FAILURE'
 export const DELETE_CANVAS_REQUEST = 'userpages/canvas/DELETE_CANVAS_REQUEST'
 export const DELETE_CANVAS_SUCCESS = 'userpages/canvas/DELETE_CANVAS_SUCCESS'
 export const DELETE_CANVAS_FAILURE = 'userpages/canvas/DELETE_CANVAS_FAILURE'
-export const OPEN_CANVAS = 'userpages/canvas/OPEN_CANVAS'
-export const UPDATE_FILTER = 'userpages/canvas/UPDATE_FILTER'
 
 const getCanvasesRequest = () => ({
     type: GET_CANVASES_REQUEST,
 })
 
-const getCanvasesSuccess = (canvases: Array<Canvas>) => ({
+const getCanvasesSuccess = (canvases) => ({
     type: GET_CANVASES_SUCCESS,
     canvases,
 })
 
-const getCanvasesFailure = (error: ErrorInUi) => ({
+const getCanvasesFailure = (error) => ({
     type: GET_CANVASES_FAILURE,
     error,
 })
 
-const getCanvasRequest = (id: CanvasId) => ({
-    type: GET_CANVAS_REQUEST,
-    id,
-})
-
-const getCanvasSuccess = (canvas: Canvas) => ({
-    type: GET_CANVAS_SUCCESS,
-    canvas,
-})
-
-const getCanvasFailure = (error: ErrorInUi) => ({
-    type: GET_CANVAS_FAILURE,
-    error,
-})
-
-const deleteCanvasRequest = (id: CanvasId) => ({
+const deleteCanvasRequest = (id) => ({
     type: DELETE_CANVAS_REQUEST,
     id,
 })
 
-const deleteCanvasSuccess = (id: CanvasId) => ({
+const deleteCanvasSuccess = (id) => ({
     type: DELETE_CANVAS_SUCCESS,
     id,
 })
 
-const deleteCanvasFailure = (error: ErrorInUi) => ({
+const deleteCanvasFailure = (error) => ({
     type: DELETE_CANVAS_FAILURE,
     error,
 })
 
-const openCanvasAction = (id: CanvasId) => ({
-    type: OPEN_CANVAS,
-    id,
-})
-
-const updateFilterAction = (filter: Filter) => ({
-    type: UPDATE_FILTER,
-    filter,
-})
-
-export const getCanvases = () => (dispatch: Function, getState: () => StoreState) => {
+export const getCanvases = (filter) => (dispatch) => {
     dispatch(getCanvasesRequest())
 
-    const filter = selectFilter(getState())
     const params = getParamsForFilter(filter, {
         adhoc: false,
         sortBy: 'lastUpdated',
     })
 
-    return api.get(apiUrl, { params })
+    return api.get({
+        url: routes.api.canvases.index(params),
+    })
         .then((data) => (
             // filter out adhoc canvases which should be filtered by server
             data.filter(({ adhoc }) => !adhoc)
@@ -106,45 +67,49 @@ export const getCanvases = () => (dispatch: Function, getState: () => StoreState
         })
 }
 
-export const getCanvas = (id: CanvasId) => (dispatch: Function) => {
-    dispatch(getCanvasRequest(id))
-    return api.get(`${apiUrl}/${id}`)
-        .then(handleEntities(canvasSchema, dispatch))
-        .then((data) => dispatch(getCanvasSuccess(data)))
-        .catch((e) => {
-            dispatch(getCanvasFailure(e))
-            Notification.push({
-                title: e.message,
-                icon: NotificationIcon.ERROR,
-            })
-            throw e
-        })
-}
-
-export const deleteCanvas = (id: CanvasId) => async (dispatch: Function): Promise<void> => {
+export const deleteCanvas = (id) => async (dispatch) => {
     dispatch(deleteCanvasRequest(id))
     try {
-        const deleteCanvas = await api.del(`${apiUrl}/${id}`)
-        dispatch(deleteCanvasSuccess(id))
-        Notification.push({
-            title: I18n.t('userpages.canvases.deleteCanvas'),
-            icon: NotificationIcon.CHECKMARK,
+        const deleteCanvas = await api.del({
+            url: routes.api.canvases.show({
+                id,
+            }),
         })
+        dispatch(deleteCanvasSuccess(id))
         return deleteCanvas
     } catch (e) {
         dispatch(deleteCanvasFailure(e))
-        Notification.push({
-            title: e.message,
-            icon: NotificationIcon.ERROR,
-        })
+        throw e
     }
 }
 
-export const openCanvas = (id: CanvasId) => (dispatch: Function) => {
-    dispatch(openCanvasAction(id))
-    return dispatch(getCanvas(id))
+export const removeCanvas = (id, resourcePermissions) => async (dispatch) => {
+    dispatch(deleteCanvasRequest(id))
+    try {
+        const removeCanvas = await dispatch(removeResourcePermissions('CANVAS', id, resourcePermissions))
+        dispatch(deleteCanvasSuccess(id))
+        return removeCanvas
+    } catch (e) {
+        dispatch(deleteCanvasFailure(e))
+        throw e
+    }
 }
 
-export const updateFilter = (filter: Filter) => (dispatch: Function) => (
-    dispatch(updateFilterAction(filter))
-)
+export const deleteOrRemoveCanvas = (id) => async (dispatch) => {
+    const resourcePermissions = await getResourcePermissions({
+        resourceType: 'CANVAS',
+        resourceId: id,
+        id: 'me',
+    })
+
+    const permissionIds = (resourcePermissions || []).reduce((result, { id, operation }) => ({
+        ...result,
+        [id]: operation,
+    }), {})
+
+    if (Object.values(permissionIds).includes('canvas_delete')) {
+        return dispatch(deleteCanvas(id))
+    }
+
+    return dispatch(removeCanvas(id, Object.keys(permissionIds)))
+}

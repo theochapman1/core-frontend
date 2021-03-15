@@ -1,8 +1,10 @@
 // @flow
 
 import React from 'react'
-import Text from '$editor/canvas/components/Ports/Value/Text'
 import debounce from 'lodash/debounce'
+import Text from '$editor/canvas/components/Ports/Value/Text'
+
+import { truncate } from '$shared/utils/text'
 
 import { getStreams, getStream } from '../../canvas/services'
 
@@ -12,7 +14,8 @@ type Props = {
     className?: ?string,
     value: any,
     disabled: boolean,
-    onChange: (value: string, done: any) => void,
+    onChange: (value: string) => void,
+    onUpdate?: () => void,
 }
 
 type State = {
@@ -42,9 +45,16 @@ export default class StreamSelector extends React.Component<Props, State> {
         this.unmounted = true
     }
 
-    componentDidUpdate(prevProps: Props) {
+    componentDidUpdate(prevProps: Props, prevState: State) {
         if (prevProps.value !== this.props.value) {
             this.loadStream()
+        }
+        const didLoad = (
+            prevState.matchingStreams !== this.state.matchingStreams
+            || prevState.loadedStream !== this.state.loadedStream
+        )
+        if (didLoad && typeof this.props.onUpdate === 'function') {
+            this.props.onUpdate()
         }
     }
 
@@ -61,7 +71,7 @@ export default class StreamSelector extends React.Component<Props, State> {
         /* eslint-disable-next-line react/no-did-mount-set-state */
         this.setState({
             loadedStream: stream,
-            search: stream.name,
+            search: stream.id,
         })
     }
 
@@ -70,6 +80,7 @@ export default class StreamSelector extends React.Component<Props, State> {
     }
 
     searchStreams = debounce(async (search = '') => {
+        search = search.trim()
         const params = {
             id: '',
             search,
@@ -79,12 +90,22 @@ export default class StreamSelector extends React.Component<Props, State> {
             public: true,
         }
 
-        const streams = await getStreams(params)
+        const [exactMatch, matchingStreams] = await Promise.all([
+            // getStream with empty id responds with all streams :O
+            search && getStream(search).catch((err) => {
+                if (err.response && err.response.status === 404) {
+                    // ignore 404, expected.
+                    return
+                }
+                throw err
+            }),
+            getStreams(params),
+        ])
 
         if (this.unmounted || this.currentSearch !== search) { return }
 
         this.setState({
-            matchingStreams: streams,
+            matchingStreams: exactMatch ? [exactMatch] : matchingStreams,
         })
     }, 500)
 
@@ -112,7 +133,7 @@ export default class StreamSelector extends React.Component<Props, State> {
         this.setState(({ search, loadedStream }) => {
             if (!isOpen && loadedStream) {
                 // set search text to stream name on close
-                search = loadedStream.name
+                search = loadedStream.id
             }
 
             return {
@@ -124,10 +145,14 @@ export default class StreamSelector extends React.Component<Props, State> {
                 this.search(this.state.search)
             }
         })
+
+        if (typeof this.props.onUpdate === 'function') {
+            this.props.onUpdate()
+        }
     }
 
     render() {
-        const { disabled, className } = this.props
+        const { disabled, className, value } = this.props
         const { isOpen, search, matchingStreams } = this.state
 
         return (
@@ -139,6 +164,7 @@ export default class StreamSelector extends React.Component<Props, State> {
                     onModeChange={this.toggleSearch}
                     placeholder="Value"
                     value={search}
+                    title={value}
                 />
                 {isOpen && (
                     <div className={styles.searchResults}>
@@ -149,10 +175,11 @@ export default class StreamSelector extends React.Component<Props, State> {
                                 key={stream.id}
                                 onMouseDown={() => this.onStreamClick(stream.id)}
                                 tabIndex="0"
+                                title={stream.description}
                             >
-                                <div>{stream.name}</div>
+                                <div>{truncate(stream.id)}</div>
                                 {!!stream.description && (
-                                    <div className={styles.description}>{stream.description}</div>
+                                    <div title={stream.description} className={styles.description}>{stream.description}</div>
                                 )}
                             </div>
                         ))}

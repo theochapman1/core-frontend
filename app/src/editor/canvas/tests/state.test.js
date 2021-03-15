@@ -3,6 +3,8 @@ import { setupAuthorizationHeader, loadModuleDefinition } from '$editor/shared/t
 import * as State from '../state'
 import * as Services from '../services'
 
+import './utils'
+
 const portMatcher = {
     id: expect.any(String),
     name: expect.any(String),
@@ -44,6 +46,21 @@ describe('Canvas State', () => {
         })
     })
 
+    describe('addModule', () => {
+        test('gives modules unique displayName', () => {
+            let canvas = State.addModule(State.emptyCanvas(), Clock)
+            canvas = State.addModule(canvas, Clock)
+            canvas = State.addModule(canvas, Clock)
+            const clock1 = canvas.modules[0]
+            expect(canvas.modules[1]).toMatchObject({
+                displayName: `${clock1.displayName} 02`,
+            })
+            expect(canvas.modules[2]).toMatchObject({
+                displayName: `${clock1.displayName} 03`,
+            })
+        })
+    })
+
     describe('getModule/findModule', () => {
         let canvas
 
@@ -82,8 +99,8 @@ describe('Canvas State', () => {
         describe('getModulePorts', () => {
             it('should get all module ports', () => {
                 const modulePorts = State.getModulePorts(canvas, clock.hash)
-                Object.values(modulePorts).forEach((port) => {
-                    expect(modulePorts[port.id]).toBe(port)
+                expect(modulePorts.length).toEqual(clock.inputs.length + clock.params.length + clock.outputs.length)
+                modulePorts.forEach((port) => {
                     expect(port).toMatchObject(portMatcher)
                 })
             })
@@ -96,7 +113,7 @@ describe('Canvas State', () => {
         describe('getPort', () => {
             it('should get port', () => {
                 const modulePorts = State.getModulePorts(canvas, clock.hash)
-                Object.values(modulePorts).forEach((port) => {
+                modulePorts.forEach((port) => {
                     expect(State.getPort(canvas, port.id)).toBe(port)
                 })
             })
@@ -117,7 +134,7 @@ describe('Canvas State', () => {
 
             it('should get all ports', () => {
                 // get all expected ports via getModulePorts
-                let expectedPorts = clocks.map((clock) => Object.values(State.getModulePorts(canvasWithTwoModules, clock.hash)))
+                let expectedPorts = clocks.map((clock) => State.getModulePorts(canvasWithTwoModules, clock.hash))
                 expectedPorts = new Set([].concat(...expectedPorts)) // flatten array into Set
 
                 const allPorts = new Set(State.getAllPorts(canvasWithTwoModules))
@@ -134,7 +151,7 @@ describe('Canvas State', () => {
 
             describe('hasPort', () => {
                 it('should be true if has port', () => {
-                    Object.values(modulePorts).forEach((port) => {
+                    modulePorts.forEach((port) => {
                         expect(State.hasPort(canvas, port.id)).toBe(true)
                     })
                 })
@@ -146,7 +163,7 @@ describe('Canvas State', () => {
 
             describe('findModulePort', () => {
                 it('should find ports by matcher', () => {
-                    Object.values(modulePorts).forEach((port) => {
+                    modulePorts.forEach((port) => {
                         expect(State.findModulePort(canvas, clock.hash, ({ id }) => id === port.id)).toBe(port)
                     })
                 })
@@ -182,30 +199,26 @@ describe('Canvas State', () => {
                 })
 
                 it('should be true for same module', () => {
-                    const modulePorts = State.getModulePorts(canvasWithTwoModules, clocks[0].hash)
-                    const [port1, port2] = Object.values(modulePorts)
+                    const [port1, port2] = State.getModulePorts(canvasWithTwoModules, clocks[0].hash)
                     expect(State.arePortsOfSameModule(canvasWithTwoModules, port1.id, port2.id)).toBe(true)
                 })
 
                 it('should be false if not of same module', () => {
-                    const modulePorts1 = State.getModulePorts(canvasWithTwoModules, clocks[0].hash)
-                    const modulePorts2 = State.getModulePorts(canvasWithTwoModules, clocks[1].hash)
-                    const [port1] = Object.values(modulePorts1)
-                    const [port2] = Object.values(modulePorts2)
+                    const [port1] = State.getModulePorts(canvasWithTwoModules, clocks[0].hash)
+                    const [port2] = State.getModulePorts(canvasWithTwoModules, clocks[1].hash)
                     expect(State.arePortsOfSameModule(canvasWithTwoModules, port1.id, port2.id)).toBe(false)
                 })
 
                 it('should error on missing port', () => {
-                    const modulePorts = State.getModulePorts(canvasWithTwoModules, clocks[0].hash)
-                    const port = Object.values(modulePorts)[0]
+                    const [port] = State.getModulePorts(canvasWithTwoModules, clocks[0].hash)
                     expect(() => State.arePortsOfSameModule(canvasWithTwoModules, port.id, 'missing')).toThrowError(State.MissingEntityError)
                     expect(() => State.arePortsOfSameModule(canvasWithTwoModules, 'missing', port.id)).toThrowError(State.MissingEntityError)
                 })
             })
 
             describe('setHistoricalRange', () => {
-                const earlyDate = new Date(Date.now() - 9999999).toISOString()
-                const lateDate = new Date().toISOString()
+                const earlyDate = Date.now() - 9999999
+                const lateDate = Date.now()
                 it('should set endDate to beginDate when beginDate < endDate', () => {
                     let canvas = State.emptyCanvas()
                     const beginDate = earlyDate
@@ -246,6 +259,146 @@ describe('Canvas State', () => {
                     })
                     expect(canvas.settings.beginDate).toEqual(beginDate)
                     expect(canvas.settings.endDate).toEqual(beginDate)
+                })
+
+                it('should convert date strings to timestamps', () => {
+                    let canvas = State.emptyCanvas()
+                    const beginDate = earlyDate
+                    const endDate = lateDate
+                    canvas = State.setHistoricalRange(canvas, {
+                        beginDate: new Date(beginDate).toISOString(),
+                    })
+                    canvas = State.setHistoricalRange(canvas, {
+                        endDate: new Date(endDate).toISOString(),
+                    })
+                    expect(canvas.settings.beginDate).toEqual(beginDate)
+                    expect(canvas.settings.endDate).toEqual(endDate)
+                })
+
+                it('should convert date strings to timestamps in updateCanvas, even without setHistoricalRange', () => {
+                    let canvas = State.emptyCanvas()
+                    const beginDate = earlyDate
+                    const endDate = lateDate
+                    canvas.settings.beginDate = new Date(earlyDate).toISOString()
+                    canvas.settings.endDate = new Date(lateDate).toISOString()
+                    canvas = State.updateCanvas(canvas)
+                    expect(canvas.settings.beginDate).toEqual(beginDate)
+                    expect(canvas.settings.endDate).toEqual(endDate)
+                })
+            })
+
+            describe('updateModulePosition', () => {
+                it('updates position', async () => {
+                    let canvas = State.emptyCanvas()
+                    canvas = State.addModule(canvas, await loadModuleDefinition('Equals'))
+                    const [equals] = canvas.modules
+                    const newPosition = {
+                        top: Number.parseInt(equals.layout.position.top, 10) + 333,
+                        left: Number.parseInt(equals.layout.position.left, 10) + 333,
+                    }
+                    canvas = State.updateModulePosition(canvas, equals.hash, newPosition)
+                    const [equalsUpdated] = canvas.modules
+                    expect(equalsUpdated.layout.position).toMatchObject({
+                        top: `${newPosition.top}px`,
+                        left: `${newPosition.left}px`,
+                    })
+                })
+                it('throws on bad module hash', () => {
+                    let canvas = State.emptyCanvas()
+                    expect(() => {
+                        canvas = State.updateModulePosition(canvas, 'not found', {
+                            top: 0,
+                            left: 0,
+                        })
+                    }).toThrow(State.MissingEntityError)
+                })
+            })
+
+            describe('updateModuleSize', () => {
+                it('updates size', async () => {
+                    let canvas = State.emptyCanvas()
+                    canvas = State.addModule(canvas, await loadModuleDefinition('Equals'))
+                    const [equals] = canvas.modules
+                    const newSize = {
+                        width: Number.parseInt(equals.layout.width, 10) + 333,
+                        height: Number.parseInt(equals.layout.height, 10) + 333,
+                    }
+                    canvas = State.updateModuleSize(canvas, equals.hash, newSize)
+                    const [equalsUpdated] = canvas.modules
+                    expect(equalsUpdated.layout).toMatchObject({
+                        width: `${newSize.width}px`,
+                        height: `${newSize.height}px`,
+                    })
+                })
+                it('throws on bad module hash', () => {
+                    let canvas = State.emptyCanvas()
+                    expect(() => {
+                        canvas = State.updateModuleSize(canvas, 'not found', {
+                            width: 100,
+                            height: 100,
+                        })
+                    }).toThrow(State.MissingEntityError)
+                })
+            })
+
+            describe('{set,get}PortUserValue', () => {
+                it('should coerce numberish values to numbers for Double type', async () => {
+                    let canvas = State.emptyCanvas()
+                    canvas = State.addModule(canvas, await loadModuleDefinition('Equals'))
+                    const [equalsModule] = canvas.modules
+                    // params[0] is 'tolerance', of Double type
+                    // coerce empty string to default
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, ''))
+                    const defaultValue = State.getPortDefaultValue(canvas, equalsModule.params[0].id)
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(defaultValue)
+                    // handles commas
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '2,3'))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(2.3)
+                    // handles zero
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '0'))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(0)
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '0.0'))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(0)
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, 0))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(0)
+                    // handles negative numbers
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '-2.3'))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(-2.3)
+                    // ignores whitespace
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '2.3 '))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(2.3)
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '2,3  '))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(2.3)
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '  -2.3  '))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(-2.3)
+                    // tries to parse a number
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, '2dasd'))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(2)
+                    // Falls back to undefined if it cannot
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, equalsModule.params[0].id, 'dasd'))
+                    expect(State.getPortUserValue(canvas, equalsModule.params[0].id)).toBe(defaultValue)
+
+                    // test server accepts state
+                    expect(State.updateCanvas(await Services.create(canvas))).toMatchCanvas(canvas)
+                })
+            })
+
+            describe('getPortUserValueOrDefault', () => {
+                it('gets value or default if value not set', async () => {
+                    let canvas = State.emptyCanvas()
+                    canvas = State.addModule(canvas, await loadModuleDefinition('MovingAverage'))
+                    const [movingAverage] = canvas.modules
+                    // gets value if set
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, movingAverage.params[0].id, 3))
+                    expect(State.getPortUserValueOrDefault(canvas, movingAverage.params[0].id)).toBe(3)
+                    // gets default if undefined
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, movingAverage.params[0].id, undefined))
+                    expect(State.getPortUserValue(canvas, movingAverage.params[0].id)).toBe(0)
+                    expect(State.getPortUserValueOrDefault(canvas, movingAverage.params[0].id)).toBe(0)
+                    // gets default if empty string
+                    canvas = State.updateCanvas(State.setPortUserValue(canvas, movingAverage.params[0].id, ''))
+                    expect(State.getPortUserValue(canvas, movingAverage.params[0].id)).toBe(0)
+                    expect(State.getPortUserValueOrDefault(canvas, movingAverage.params[0].id)).toBe(0)
                 })
             })
         })

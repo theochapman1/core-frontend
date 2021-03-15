@@ -8,15 +8,13 @@ import { Responsive, WidthProvider } from 'react-grid-layout'
 import ModuleHeader from '$editor/shared/components/ModuleHeader'
 import ModuleUI from '$editor/shared/components/ModuleUI'
 
-import dashboardConfig from '../config'
-
-import { SelectionContext } from './Selection'
-
-import Background from './Background'
+import { SelectionContext } from '$shared/hooks/useSelection'
 
 import 'react-grid-layout/css/styles.css'
 import ModuleStyles from '$editor/shared/components/Module.pcss'
 import CanvasStyles from '$editor/canvas/components/Canvas.pcss'
+import dashboardConfig from '../config'
+import Background from './Background'
 import styles from './Dashboard.pcss'
 
 const ResponsiveReactGridLayout = WidthProvider(Responsive)
@@ -199,16 +197,23 @@ export default WidthProvider(class DashboardEditor extends React.Component {
     }
 
     onResize = (layout) => {
+        this.updateLayout(layout)
+    }
+
+    onResizeStop = (layout, oldItem, newItem) => {
+        if (isEqual(oldItem, newItem)) { return } // noop if no change
         this.userChangedLayout = true
         this.updateLayout(layout)
     }
 
-    onDragStop = () => {
+    onDragStop = (layout, oldItem, newItem) => {
+        if (isEqual(oldItem, newItem)) { return } // noop if no change
         this.userChangedLayout = true
+        this.updateLayout(layout)
     }
 
     render() {
-        const { className, dashboard, editorLocked } = this.props
+        const { className, dashboard, editorLocked, children } = this.props
         if (!dashboard) { return null }
 
         const select = this.context
@@ -228,7 +233,7 @@ export default WidthProvider(class DashboardEditor extends React.Component {
         return (
             <div className={cx(className, CanvasStyles.Canvas)}>
                 <div
-                    className={CanvasStyles.CanvasElements}
+                    className={cx(CanvasStyles.CanvasElements, styles.DashboardElements)}
                     style={{
                         backgroundImage: `url(${Background({
                             width: cellSize,
@@ -249,6 +254,7 @@ export default WidthProvider(class DashboardEditor extends React.Component {
                         draggableHandle={`.${ModuleStyles.dragHandle}`}
                         onLayoutChange={this.onLayoutChange}
                         onDragStop={this.onDragStop}
+                        onResizeStop={this.onResizeStop}
                         onResize={this.onResize}
                         isDraggable={!locked}
                         isResizable={!locked}
@@ -261,8 +267,8 @@ export default WidthProvider(class DashboardEditor extends React.Component {
                                         item={item}
                                         dashboard={dashboard}
                                         setDashboard={this.props.setDashboard}
-                                        isSelected={select.selection.has(id)}
-                                        selectItem={() => select.api.only(id)}
+                                        isSelected={select.has(id)}
+                                        selectItem={() => select.only(id)}
                                         currentLayout={this.state.layoutsByItemId[id]}
                                         disabled={locked}
                                     />
@@ -271,6 +277,7 @@ export default WidthProvider(class DashboardEditor extends React.Component {
                         })}
                     </ResponsiveReactGridLayout>
                 </div>
+                {children}
             </div>
         )
     }

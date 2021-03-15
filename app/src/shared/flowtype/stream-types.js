@@ -1,7 +1,5 @@
 // @flow
 
-import type { Permission } from '$userpages/flowtype/permission-types'
-
 // StreamField ID used for the frontend UI only.
 export type StreamField = {
     name: string,
@@ -14,17 +12,14 @@ export type StreamFieldList = Array<StreamField>
 export type StreamId = string
 
 export type NewStream = {
-    name: string,
+    id: string,
     description: ?string,
 }
 
-export type StreamStatus = {
-    ok: boolean,
-    date?: Date,
-}
-
-export type Stream = NewStream & {
+export type Stream = {
     id: StreamId,
+    name: string,
+    description: ?string,
     config: {
         fields?: StreamFieldList
     },
@@ -33,15 +28,15 @@ export type Stream = NewStream & {
         name: string,
         module: number,
     },
-    ownPermissions: Array<$ElementType<Permission, 'operation'>>,
     lastUpdated: number,
+    inactivityThresholdHours: number,
     partitions: number,
     autoConfigure: boolean,
     requireSignedData: boolean,
     storageDays: number,
     uiChannel: boolean,
-    streamStatus?: 'ok' | 'error' | 'inactive',
-    lastData?: Date,
+    requireSignedData: boolean,
+    requireEncryptedData: boolean,
 }
 
 export type StreamIdList = Array<StreamId>
@@ -50,20 +45,4 @@ export type StreamList = Array<Stream>
 
 export type StreamEntities = {
     [StreamId]: Stream,
-}
-
-export type CSVImporterSchema = {
-    headers: Array<string>,
-    timeZone: string,
-    timestampColumnIndex: ?number
-}
-
-export type CsvUploadResult = {
-    fileId: string,
-    schema: CSVImporterSchema,
-}
-
-export type Range = {
-    beginDate: string,
-    endDate: string,
 }

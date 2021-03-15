@@ -1,98 +1,91 @@
 // @flow
 
-import React from 'react'
-import { Translate, I18n } from 'react-redux-i18n'
+import React, { useMemo } from 'react'
+import BN from 'bignumber.js'
 
+import ModalPortal from '$shared/components/ModalPortal'
 import Dialog from '$shared/components/Dialog'
-import { toSeconds } from '../../../utils/time'
-import withI18n from '../../../containers/WithI18n'
-import type { Product, SmartContractProduct } from '../../../flowtype/product-types'
-import type { Purchase } from '../../../flowtype/common-types'
+import type { TimeUnit, PaymentCurrency } from '$shared/flowtype/common-types'
+import { contractCurrencies } from '$shared/utils/constants'
+import { formatDecimals } from '$mp/utils/price'
+
+import styles from './purchaseSummaryDialog.pcss'
 
 export type Props = {
-    product: Product,
-    contractProduct: SmartContractProduct,
-    purchase: Purchase,
-    purchaseStarted: boolean,
+    name: string,
+    time: string,
+    timeUnit: TimeUnit,
+    paymentCurrency: PaymentCurrency,
+    price: BN,
+    approxUsd: BN,
+    waiting?: boolean,
+    onBack: () => void,
     onCancel: () => void,
-    onPay: () => void,
+    onPay: () => void | Promise<void>,
 }
 
 export const PurchaseSummaryDialog = ({
-    product,
-    contractProduct,
-    purchase,
-    purchaseStarted,
+    name,
+    time,
+    timeUnit,
+    price: priceProp,
+    paymentCurrency,
+    approxUsd: approxUsdProp,
+    waiting,
     onCancel,
+    onBack,
     onPay,
 }: Props) => {
-    if (purchaseStarted) {
-        return (
-            <Dialog
-                onClose={onCancel}
-                title={I18n.t('modal.purchaseSummary.started.title')}
-                actions={{
-                    cancel: {
-                        title: I18n.t('modal.common.cancel'),
-                        onClick: onCancel,
-                        color: 'link',
-                    },
-                    publish: {
-                        title: I18n.t('modal.common.waiting'),
-                        color: 'primary',
-                        disabled: true,
-                        spinner: true,
-                    },
-                }}
-            >
-                <div>
-                    <p><Translate value="modal.purchaseSummary.started.message" dangerousHTML /></p>
-                </div>
-            </Dialog>
-        )
-    }
+    const price = useMemo(() => formatDecimals(priceProp, paymentCurrency), [priceProp, paymentCurrency])
 
-    const { pricePerSecond, priceCurrency } = contractProduct
+    const approxUsd = useMemo(() => formatDecimals(approxUsdProp, contractCurrencies.USD), [approxUsdProp])
 
     return (
-        <Dialog
-            onClose={onCancel}
-            title={I18n.t('modal.purchaseSummary.title')}
-            actions={{
-                cancel: {
-                    title: I18n.t('modal.common.cancel'),
-                    color: 'link',
-                    onClick: onCancel,
-                },
-                next: {
-                    title: I18n.t('modal.purchaseSummary.pay'),
-                    color: 'primary',
-                    onClick: () => onPay(),
-                },
-            }}
-        >
-            <h6>{product.name}</h6>
-            <p>
-                <Translate
-                    value="modal.purchaseSummary.access"
-                    time={purchase.time}
-                    timeUnit={I18n.t(`common.timeUnit.${purchase.timeUnit}`)}
-                />
-            </p>
-            <p>
-                <Translate
-                    value="modal.purchaseSummary.price"
-                    price={toSeconds(purchase.time, purchase.timeUnit).multipliedBy(pricePerSecond).toString()}
-                    priceCurrency={priceCurrency}
-                />
-            </p>
-        </Dialog>
+        <ModalPortal>
+            <Dialog
+                onClose={onCancel}
+                title="Complete your subscription"
+                actions={{
+                    back: {
+                        title: 'Back',
+                        kind: 'link',
+                        onClick: () => onBack(),
+                        disabled: !!waiting,
+                    },
+                    next: {
+                        title: 'Pay now',
+                        kind: 'primary',
+                        onClick: () => onPay(),
+                        spinner: !!waiting,
+                        disabled: !!waiting,
+                    },
+                }}
+                contentClassName={styles.purchaseSummaryContent}
+            >
+                <p className={styles.purchaseInfo}>
+                    <strong>{name}</strong>
+                    <span className={styles.time}>
+                        {time} {`${timeUnit}${time !== '1' ? 's' : ''}`}
+                    </span>
+                </p>
+                <div>
+                    <span className={styles.priceValue}>
+                        {price}
+                        <span className={styles.priceCurrency}>
+                            {paymentCurrency}
+                        </span>
+                    </span>
+                    <p className={styles.usdEquiv}>
+                        Approx {approxUsd} {contractCurrencies.USD}
+                    </p>
+                </div>
+            </Dialog>
+        </ModalPortal>
     )
 }
 
 PurchaseSummaryDialog.defaultProps = {
     waiting: false,
-    purchaseStarted: false,
 }
 
-export default withI18n(PurchaseSummaryDialog)
+export default PurchaseSummaryDialog

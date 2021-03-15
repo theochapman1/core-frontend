@@ -3,11 +3,11 @@
 import React, { type Node } from 'react'
 import NotificationSystem from 'react-notification-system'
 
-import BasicNotification from './BasicNotification'
-import TransactionNotification from './TransactionNotification'
-import ModalContext from '$shared/contexts/Modal'
+import { Context as ModalContext } from '$shared/contexts/ModalPortal'
 import { type Ref } from '$shared/flowtype/common-types'
 import Notification from '$shared/utils/Notification'
+import TransactionNotification from './TransactionNotification'
+import BasicNotification from './BasicNotification'
 import styles from './notificationStyles'
 import wrapperStyles from './Notifications.pcss'
 
@@ -19,7 +19,9 @@ type System = {
     },
 }
 
-type Props = {}
+type Props = {
+    noAnimation?: boolean,
+}
 
 type State = {
     notifications: Array<Notification>,
@@ -41,6 +43,10 @@ const getNotificationComponent = (notification: Notification): Node => (
 class Notifications extends React.Component<Props, State> {
     static contextType = ModalContext
 
+    static defaultProps = {
+        noAnimation: false,
+    }
+
     state = {
         notifications: [],
     }
@@ -50,13 +56,7 @@ class Notifications extends React.Component<Props, State> {
     }
 
     componentDidUpdate() {
-        const { isModalOpen } = this.context
-
-        if (isModalOpen) {
-            this.hideNotifications()
-        } else {
-            this.showNotifications()
-        }
+        [...this.state.notifications].reverse().forEach(this.showNotification)
     }
 
     componentWillUnmount() {
@@ -77,11 +77,7 @@ class Notifications extends React.Component<Props, State> {
                 position: 'bl',
                 level: 'info',
                 onRemove: () => {
-                    // We're checking `this.context.isModalOpen` here because we need the most recent
-                    // value of the flag on every `onRemove` call.
-                    if (!this.context.isModalOpen) {
-                        this.removeNotification(notification.id)
-                    }
+                    this.removeNotification(notification.id)
                 },
                 children: getNotificationComponent(notification),
             })
@@ -97,21 +93,6 @@ class Notifications extends React.Component<Props, State> {
         }))
     }
 
-    hideNotifications = () => {
-        const system: ?System = this.system.current
-
-        if (system) {
-            system.clearNotifications()
-        }
-    }
-
-    showNotifications = () => {
-        // Recent notifications are displayed on top and `state.notifications` collecton
-        // respects that (new ones are prepended). We have to revert the order when
-        // we restore entries.
-        [...this.state.notifications].reverse().forEach(this.showNotification)
-    }
-
     removeNotification = (id: number): void => {
         this.setState(({ notifications }) => ({
             notifications: notifications.filter((notification) => notification.id !== id),
@@ -123,7 +104,11 @@ class Notifications extends React.Component<Props, State> {
     render() {
         return (
             <div className={wrapperStyles.wrapper}>
-                <NotificationSystem style={styles} ref={this.system} />
+                <NotificationSystem
+                    style={styles}
+                    ref={this.system}
+                    noAnimation={this.props.noAnimation}
+                />
             </div>
         )
     }

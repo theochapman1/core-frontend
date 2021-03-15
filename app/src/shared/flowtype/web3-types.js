@@ -11,6 +11,7 @@ export type Hash = string
 export type Address = string
 export type Receipt = {
     transactionHash: Hash,
+    contractAddress?: Address,
 }
 export type Abi = Array<{}>
 export type Web3Provider = StreamrWeb3.providers.HTTPProvider | StreamrWeb3.providers.WebsocketProvider | StreamrWeb3.providers.IpcProvider | {
@@ -25,6 +26,11 @@ export type EthereumNetwork = {
 export type SmartContractConfig = {
     abi: Abi,
     address: Address
+}
+
+export type SmartContractMetadata = {
+    abi: Abi,
+    bytecode: string,
 }
 
 export type SmartContractCall<T> = Promise<T>

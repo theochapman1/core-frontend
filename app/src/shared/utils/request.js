@@ -2,25 +2,33 @@
 
 import axios from 'axios'
 import merge from 'lodash/merge'
-import get from 'lodash/get'
 
+import type { ApiResult, RequestMethod } from '$shared/flowtype/common-types'
+import RequestError from '$shared/errors/RequestError'
 import getAuthorizationHeader from './getAuthorizationHeader'
-import type { ErrorInUi, ApiResult, RequestMethod } from '$shared/flowtype/common-types'
 
 export const getData = ({ data }: {
     data: any
 }): any => data
 
-export const getError = (res: any): ErrorInUi => ({
-    message: get(res, 'response.data.error') || get(res, 'response.data.message') || (res && res.message) || 'Something went wrong',
-    code: get(res, 'response.data.code') || null,
-    statusCode: res && res.response && res.response.status,
-})
+export type RequestParams = {
+    url: string,
+    method?: RequestMethod,
+    data?: any,
+    options?: Object,
+    useAuthorization?: boolean,
+}
 
-export default function request(url: string, method: RequestMethod = 'get', data?: any = null, options?: Object): ApiResult<*> {
+export default function request({
+    url,
+    options,
+    method = 'get',
+    data = null,
+    useAuthorization = true,
+}: RequestParams): ApiResult<*> {
     const defaultOptions = {
         headers: {
-            ...getAuthorizationHeader(),
+            ...(useAuthorization ? getAuthorizationHeader() : {}),
         },
     }
 
@@ -39,12 +47,11 @@ export default function request(url: string, method: RequestMethod = 'get', data
         url,
         method,
         data,
-        withCredentials: true,
     })
         .then((res) => (
             getData(res)
         ))
         .catch((res: any) => {
-            throw getError(res)
+            throw new RequestError(res)
         })
 }

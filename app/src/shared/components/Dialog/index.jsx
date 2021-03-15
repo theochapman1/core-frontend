@@ -6,7 +6,7 @@ import classNames from 'classnames'
 import Buttons, { type Props as ButtonsProps, type ButtonActions } from '$shared/components/Buttons'
 import ModalDialog, { type Props as ModalDialogProps } from '$shared/components/ModalDialog'
 import { dialogAutoCloseTimeout } from '$shared/utils/constants'
-import Spinner from '$shared/components/Spinner'
+import LoadingIndicator from '$shared/components/LoadingIndicator'
 
 import Container from './Container'
 import TitleBar from './TitleBar'
@@ -16,14 +16,17 @@ import HelpToggle from './HelpToggle'
 import styles from './dialog.pcss'
 
 export type Props = {
-    title?: string,
+    title?: Node,
     children?: Node,
     helpText?: Node,
     waiting?: boolean,
+    disabled?: boolean,
     className?: string,
     contentClassName?: string,
     containerClassname?: string,
     actionsClassName?: string,
+    backdropClassName?: string,
+    titleClassName?: string,
     onClose: () => void,
     showCloseIcon?: boolean,
     autoCloseAfter?: number, // in milliseconds, use this to close the dialog after a custom timeout
@@ -43,8 +46,27 @@ class Dialog extends Component<Props, State> {
         autoClose: false,
     }
 
+    static classNames = {
+        dialog: styles.dialog,
+        backdrop: styles.backdrop,
+        container: styles.container,
+        title: styles.title,
+        content: styles.content,
+        buttons: styles.buttons,
+    }
+
     state = {
         isHelpOpen: false,
+    }
+
+    componentDidMount() {
+        const { autoCloseAfter, autoClose, onClose } = this.props
+        const timeout = autoCloseAfter || (autoClose && dialogAutoCloseTimeout) || null
+
+        if (timeout != null) {
+            this.clearCloseTimeout()
+            this.autoCloseTimeoutId = setTimeout(onClose, timeout)
+        }
     }
 
     componentDidUpdate(prevProps: Props) {
@@ -81,12 +103,15 @@ class Dialog extends Component<Props, State> {
             title,
             children,
             waiting,
+            disabled,
             helpText,
             actions,
             className,
             contentClassName,
             containerClassname,
             actionsClassName,
+            backdropClassName,
+            titleClassName,
             onClose,
             showCloseIcon,
             renderActions,
@@ -95,21 +120,28 @@ class Dialog extends Component<Props, State> {
         const { isHelpOpen } = this.state
 
         return (
-            <ModalDialog className={classNames(styles.dialog, className)} onClose={() => onClose && onClose()} {...otherProps}>
-                <Container className={containerClassname}>
+            <ModalDialog
+                className={classNames(styles.dialog, className)}
+                backdropClassName={classNames(styles.backdrop, backdropClassName)}
+                onClose={() => onClose && onClose()}
+                {...otherProps}
+            >
+                <Container className={classNames(styles.container, containerClassname)}>
                     <TitleBar
                         showCloseIcon={showCloseIcon}
                         onClose={onClose}
+                        className={classNames(styles.title, titleClassName)}
                     >
                         {title}
                         {!!helpText && (
                             <HelpToggle active={isHelpOpen} onToggle={this.onHelpToggle} />
                         )}
                     </TitleBar>
-                    <ContentArea className={contentClassName}>
-                        {(!helpText || !isHelpOpen) && (!waiting ? children : (
-                            <Spinner size="large" className={styles.spinner} />
-                        ))}
+                    {(!helpText || !isHelpOpen) && !!waiting && (
+                        <LoadingIndicator loading />
+                    )}
+                    <ContentArea className={classNames(styles.content, contentClassName)}>
+                        {(!helpText || !isHelpOpen) && !waiting && children}
                         {(!!helpText && isHelpOpen) && helpText}
                     </ContentArea>
                     {!waiting && (!helpText || !this.state.isHelpOpen) && !renderActions && (
@@ -117,6 +149,9 @@ class Dialog extends Component<Props, State> {
                     )}
                     {!waiting && (!helpText || !this.state.isHelpOpen) && renderActions && renderActions(actions || {})}
                 </Container>
+                {!!disabled && (
+                    <div className={styles.disabledModal} />
+                )}
             </ModalDialog>
         )
     }

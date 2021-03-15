@@ -1,35 +1,20 @@
 // @flow
 
 import { get, post, put, del } from '$shared/utils/api'
-import { formatApiUrl } from '$shared/utils/url'
 import type { ApiResult } from '$shared/flowtype/common-types'
-import type { User, PasswordUpdate } from '$shared/flowtype/user-types'
+import type { User } from '$shared/flowtype/user-types'
+import routes from '$routes'
 
-export const getUserData = (): ApiResult<User> => get(formatApiUrl('users', 'me', {
-    noCache: Date.now(),
-}))
-
-export const putUser = (user: User): ApiResult<User> => put(formatApiUrl('users', 'me'), {
-    headers: {
-        'Content-Type': 'application/json',
-    },
-    ...user,
+export const getUserData = (): ApiResult<User> => get({
+    url: routes.api.currentUser.index({
+        noCache: Date.now(),
+    }),
 })
 
-export const postPasswordUpdate = (passwordUpdate: PasswordUpdate, userInputs?: Array<string> = []): ApiResult<null> => {
-    const form = new FormData()
-    form.append('username', userInputs[0])
-    form.append('currentpassword', passwordUpdate.currentPassword)
-    form.append('password', passwordUpdate.newPassword)
-    form.append('password2', passwordUpdate.confirmNewPassword)
-
-    return post(formatApiUrl('users', 'me', 'changePassword'), form, {
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-    })
-}
+export const putUser = (user: User): ApiResult<User> => put({
+    url: routes.api.currentUser.index(),
+    data: user,
+})
 
 export const uploadProfileAvatar = (image: File): Promise<void> => {
     const options = {
@@ -41,7 +26,13 @@ export const uploadProfileAvatar = (image: File): Promise<void> => {
     const data = new FormData()
     data.append('file', image, image.name)
 
-    return post(formatApiUrl('users', 'me', 'image'), data, options)
+    return post({
+        url: routes.api.currentUser.image(),
+        data,
+        options,
+    })
 }
 
-export const deleteUserAccount = (): ApiResult<null> => del(formatApiUrl('users/me'))
+export const deleteUserAccount = (): ApiResult<null> => del({
+    url: routes.api.currentUser.index(),
+})

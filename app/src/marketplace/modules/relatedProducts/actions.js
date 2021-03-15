@@ -3,10 +3,10 @@
 import { createAction } from 'redux-actions'
 import { normalize } from 'normalizr'
 
-import type { Product, ProductId } from '../../flowtype/product-types'
 import type { ErrorInUi, ReduxActionCreator } from '$shared/flowtype/common-types'
 import { productsSchema } from '$shared/modules/entities/schema'
 import { updateEntities } from '$shared/modules/entities/actions'
+import type { Product, ProductId } from '../../flowtype/product-types'
 import * as api from './services'
 import {
     GET_RELATED_PRODUCTS_REQUEST,
@@ -28,9 +28,9 @@ export const getRelatedProductsFailure: RelatedProductsErrorActionCreator = crea
     error,
 }))
 
-export const getRelatedProducts = (id: ProductId) => (dispatch: Function) => {
+export const getRelatedProducts = (id: ProductId, useAuthorization: boolean = true) => (dispatch: Function) => {
     dispatch(getRelatedProductsRequest())
-    return api.getRelatedProducts(id)
+    return api.getRelatedProducts(id, useAuthorization)
         .then((data) => {
             const { result, entities } = normalize(data, productsSchema)
             dispatch(updateEntities(entities))

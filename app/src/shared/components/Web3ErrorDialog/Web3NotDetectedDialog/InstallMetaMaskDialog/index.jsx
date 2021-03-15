@@ -1,8 +1,8 @@
 // @flow
 
 import React from 'react'
-import { Translate, I18n } from 'react-redux-i18n'
 
+import ModalPortal from '$shared/components/ModalPortal'
 import WalletErrorPng from '$shared/assets/images/wallet_error.png'
 import WalletErrorPng2x from '$shared/assets/images/wallet_error@2x.png'
 import Dialog from '$shared/components/Dialog'
@@ -14,14 +14,20 @@ export type Props = {
 }
 
 const InstallMetaMaskDialog = ({ onClose, ...props }: Props) => (
-    <Dialog
-        onClose={onClose}
-        title={I18n.t('modal.web3.installmetamask.title')}
-        {...props}
-    >
-        <img className={styles.icon} src={WalletErrorPng} srcSet={`${WalletErrorPng2x} 2x`} alt={I18n.t('error.wallet')} />
-        <p><Translate value="modal.web3.installmetamask.message" dangerousHTML /></p>
-    </Dialog>
+    <ModalPortal>
+        <Dialog
+            {...props}
+            onClose={onClose}
+            title="No wallet found"
+        >
+            <img className={styles.icon} src={WalletErrorPng} srcSet={`${WalletErrorPng2x} 2x`} alt="Wallet error" />
+            <p>
+                We couldn&apos;t find your wallet. Please install
+                <br />
+                MetaMask or another wallet and try again.
+            </p>
+        </Dialog>
+    </ModalPortal>
 )
 
 export default InstallMetaMaskDialog

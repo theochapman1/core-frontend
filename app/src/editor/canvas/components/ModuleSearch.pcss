@@ -2,6 +2,15 @@
 
 }
 
+.SearchCategory > span,
+.ModuleItem > span,
+.StreamItem > span {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 100%;
+}
+
 body .Category {
   display: flex;
   align-items: center;
@@ -27,10 +36,6 @@ body .SearchCategory {
   color: #323232;
   text-transform: uppercase;
   letter-spacing: 1px;
-}
-
-body .SearchCategory:hover {
-  background: transparent;
 }
 
 .ModuleSearch .ModuleItem {

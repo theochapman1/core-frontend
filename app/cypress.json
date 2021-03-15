@@ -1,0 +1,6 @@
+{
+    "baseUrl": "http://localhost",
+    "integrationFolder": "cypress/integration",
+    "testFiles": "**/*.spec.js",
+    "video": false
+}

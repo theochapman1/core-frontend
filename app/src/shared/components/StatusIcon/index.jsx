@@ -1,35 +1,74 @@
-// @flow
-
 import React from 'react'
-import cx from 'classnames'
+import styled from 'styled-components'
 
-import styles from './statusIcon.pcss'
+import Tooltip from '$shared/components/Tooltip'
 
-type Props = {
-    status?: 'ok' | 'error' | 'inactive',
-    className?: string,
+const OkTheme = {
+    id: 'ok',
+    background: '#2AC437',
 }
 
-export default class StatusIcon extends React.Component<Props> {
-    static ERROR = 'error'
-    static OK = 'ok'
-    static INACTIVE = 'inactive'
+const ErrorTheme = {
+    id: 'error',
+    background: '#FF0F2D',
+}
 
-    static defaultProps = {
-        status: StatusIcon.INACTIVE,
-    }
+const InactiveTheme = {
+    id: 'inactive',
+    background: '#CDCDCD',
+}
 
-    render() {
-        const { status, className } = this.props
+const RemovedTheme = {
+    id: 'removed',
+    background: '#ADADAD',
+}
+
+const PendingTheme = {
+    id: 'pending',
+    background: '#FFBC00',
+}
+
+const Icon = styled.div.attrs(({ theme }) => ({
+    'data-test-hook': `Status ${theme.id}`,
+}))`
+    position: relative;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: ${({ theme }) => theme.background || '#CDCDCD'};
+`
+
+const statusLabels = {
+    ok: 'Active',
+    inactive: 'Inactive',
+    error: 'Inactive',
+    pending: 'Pending',
+    removed: 'Removed',
+}
+
+const StatusIcon = ({ status = StatusIcon.INACTIVE, className, tooltip = false }) => {
+    let statusText
+
+    if (tooltip) {
+        statusText = (typeof tooltip === 'string') ? tooltip : statusLabels[status.id || 'inactive']
 
         return (
-            <div
-                className={cx(className, styles.status, {
-                    [styles.ok]: status === StatusIcon.OK,
-                    [styles.error]: status === StatusIcon.ERROR,
-                    [styles.inactive]: status === StatusIcon.INACTIVE,
-                })}
-            />
+            <Tooltip value={statusText} placement={Tooltip.BOTTOM}>
+                <Icon theme={status} className={className} />
+            </Tooltip>
         )
     }
+
+    return (
+        <Icon theme={status} className={className} />
+    )
 }
+
+StatusIcon.OK = OkTheme
+StatusIcon.ERROR = ErrorTheme
+StatusIcon.INACTIVE = InactiveTheme
+StatusIcon.PENDING = PendingTheme
+StatusIcon.REMOVED = RemovedTheme
+
+export default StatusIcon

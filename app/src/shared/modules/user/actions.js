@@ -1,17 +1,18 @@
 // @flow
 
 import { createAction } from 'redux-actions'
-
-import Notification from '$shared/utils/Notification'
-import { NotificationIcon } from '$shared/utils/constants'
+import { push } from 'connected-react-router'
+import * as yup from 'yup'
 
 import type { ErrorInUi, ReduxActionCreator } from '$shared/flowtype/common-types'
-import type { User, PasswordUpdate } from '$shared/flowtype/user-types'
+import type { User } from '$shared/flowtype/user-types'
+import { selectUserData } from '$shared/modules/user/selectors'
+import { clearStorage } from '$shared/utils/storage'
+import routes from '$routes'
 import type {
     UserErrorActionCreator,
     UserDataActionCreator,
 } from './types'
-import { selectUserData } from '$shared/modules/user/selectors'
 
 import * as services from './services'
 import {
@@ -22,9 +23,6 @@ import {
     SAVE_CURRENT_USER_SUCCESS,
     SAVE_CURRENT_USER_FAILURE,
     UPDATE_CURRENT_USER,
-    UPDATE_PASSWORD_REQUEST,
-    UPDATE_PASSWORD_SUCCESS,
-    UPDATE_PASSWORD_FAILURE,
     UPDATE_AVATAR_REQUEST,
     UPDATE_AVATAR_SUCCESS,
     UPDATE_AVATAR_FAILURE,
@@ -33,7 +31,6 @@ import {
     DELETE_USER_ACCOUNT_SUCCESS,
     DELETE_USER_ACCOUNT_FAILURE,
 } from './constants'
-import { clearStorage } from '$shared/utils/storage'
 
 // Logout
 export const resetUserData: ReduxActionCreator = createAction(RESET_USER_DATA)
@@ -41,8 +38,7 @@ export const resetUserData: ReduxActionCreator = createAction(RESET_USER_DATA)
 export const logout = () => (dispatch: Function) => {
     clearStorage()
     dispatch(resetUserData())
-
-    window.location.href = process.env.PLATFORM_ORIGIN_URL
+    dispatch(push(routes.root()))
 }
 
 // Fetching user data
@@ -75,18 +71,6 @@ const updateAvatarFailure = (error: ErrorInUi) => ({
     error,
 })
 
-// update password
-const updatePasswordRequest = () => ({
-    type: UPDATE_PASSWORD_REQUEST,
-})
-const updatePasswordSuccess = () => ({
-    type: UPDATE_PASSWORD_SUCCESS,
-})
-const updatePasswordFailure = (error: ErrorInUi) => ({
-    type: UPDATE_PASSWORD_FAILURE,
-    error,
-})
-
 // remove user account
 const deleteUserAccountRequest: ReduxActionCreator = createAction(DELETE_USER_ACCOUNT_REQUEST)
 const deleteUserAccountSuccess: ReduxActionCreator = createAction(DELETE_USER_ACCOUNT_SUCCESS)
@@ -104,6 +88,8 @@ export const getUserData = () => (dispatch: Function) => {
     return services.getUserData()
         .then((user) => {
             dispatch(getUserDataSuccess(user))
+
+            return user
         }, (error) => {
             dispatch(getUserDataError(error))
         })
@@ -115,10 +101,22 @@ const updateCurrentUser: UserDataActionCreator = createAction(UPDATE_CURRENT_USE
 
 export const updateCurrentUserName = (name: string) => (dispatch: Function, getState: Function) => {
     const user = selectUserData(getState())
-    dispatch(updateCurrentUser({
-        ...user,
-        name,
-    }))
+    if (user) {
+        dispatch(updateCurrentUser({
+            ...user,
+            name,
+        }))
+    }
+}
+
+export const updateCurrentUserEmail = (email: string) => (dispatch: Function, getState: Function) => {
+    const user = selectUserData(getState())
+    if (user) {
+        dispatch(updateCurrentUser({
+            ...user,
+            email,
+        }))
+    }
 }
 
 export const updateCurrentUserImage = (image: ?File) => (dispatch: Function, getState: Function) => {
@@ -139,13 +137,11 @@ export const updateCurrentUserImage = (image: ?File) => (dispatch: Function, get
         })
         .catch((e) => {
             dispatch(updateAvatarFailure(e))
-            Notification.push({
-                title: e.message,
-                icon: NotificationIcon.ERROR,
-            })
             throw e
         })
 }
+
+const emailValidator = yup.string().trim().email()
 
 export const saveCurrentUser = () => async (dispatch: Function, getState: Function) => {
     dispatch(saveCurrentUserRequest())
@@ -156,51 +152,16 @@ export const saveCurrentUser = () => async (dispatch: Function, getState: Functi
         throw new Error('Invalid user data')
     }
 
+    if (!!user.email && !emailValidator.isValidSync(user.email)) {
+        throw new Error('Please enter a valid email address')
+    }
+
     return services.putUser(user)
         .then((data) => {
             dispatch(saveCurrentUserSuccess(data))
-            Notification.push({
-                title: 'Your settings have been saved',
-                icon: NotificationIcon.CHECKMARK,
-            })
         })
         .catch((e) => {
             dispatch(saveCurrentUserFailure(e))
-            Notification.push({
-                title: e.message,
-                icon: NotificationIcon.ERROR,
-            })
-            throw e
-        })
-}
-
-export const updatePassword = (passwordUpdate: PasswordUpdate) => (dispatch: Function, getState: Function): any => {
-    dispatch(updatePasswordRequest())
-
-    const user = selectUserData(getState()) || {}
-
-    return services.postPasswordUpdate(passwordUpdate, [user.username, user.name])
-        .then((data) => {
-            // fancy magic to parse validation message out of HTML response
-            const parser = new window.DOMParser()
-            const xml = parser.parseFromString(data, 'text/html')
-            const error = xml.querySelector('.has-error .text-danger')
-            if (error) {
-                throw new Error(error.innerText.trim())
-            }
-        })
-        .then(() => {
-            dispatch(updatePasswordSuccess())
-            Notification.push({
-                title: 'Password changed',
-                icon: NotificationIcon.CHECKMARK,
-            })
-        }, (e) => {
-            dispatch(updatePasswordFailure(e))
-            Notification.push({
-                title: 'Password not changed',
-                icon: NotificationIcon.ERROR,
-            })
             throw e
         })
 }
@@ -211,19 +172,10 @@ export const deleteUserAccount = () => (dispatch: Function) => {
     return services.deleteUserAccount()
         .then(() => {
             dispatch(deleteUserAccountSuccess())
-            Notification.push({
-                title: 'Account disabled!',
-                icon: NotificationIcon.CHECKMARK,
-            })
-            dispatch(logout())
         }, (error) => {
             dispatch(deleteUserAccountFailure({
                 message: error.message,
             }))
-            Notification.push({
-                title: 'Account not disabled',
-                icon: NotificationIcon.ERROR,
-            })
             throw error
         })
 }

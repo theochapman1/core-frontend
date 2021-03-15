@@ -1,75 +1,62 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
+import ModuleStyles from '$editor/shared/components/Module.pcss'
 import { updateModulePosition } from '../state'
 import { Draggable } from './DragDropContext'
-import ModuleStyles from '$editor/shared/components/Module.pcss'
-import { useController } from './CanvasController'
 import styles from './Module.pcss'
 
-export default function (props) {
-    const canvasController = useController()
-    const onStartDragModule = useCallback((hash) => {
-        canvasController.changedLoader.markChanged(hash)
-    }, [canvasController])
-    return (
-        <ModuleDragger {...props} onStartDragModule={onStartDragModule} />
-    )
-}
+const EMPTY = {}
 
-class ModuleDragger extends React.Component {
-    onDropModule = (event, data) => {
-        if (this.context.isCancelled) { return }
+export default function ModuleDragger({ api, module, children, onStartDragModule: onStartDragModuleProp }) {
+    const { setCanvas } = api
+    const { hash: moduleHash } = module
+    const [newPosition, setNewPosition] = useState()
+    const onDropModule = useCallback((event, data) => {
         if (data.diff.x === 0 && data.diff.y === 0) {
             return // do nothing if not moved
         }
 
-        const moduleHash = this.props.module.hash
-        const newPosition = {
+        setNewPosition({
             top: data.y,
             left: data.x,
-        }
+        })
+    }, [setNewPosition])
 
-        this.props.api.setCanvas({ type: 'Move Module' }, (canvas) => (
+    useEffect(() => {
+        if (!newPosition) { return }
+        setNewPosition(undefined)
+
+        setCanvas({ type: 'Move Module' }, (canvas) => (
             updateModulePosition(canvas, moduleHash, newPosition)
         ))
-    }
+    }, [setCanvas, moduleHash, newPosition])
 
-    onStartDragModule = () => {
-        const { module, onStartDragModule } = this.props
-        const moduleHash = module.hash
-        if (onStartDragModule) {
-            onStartDragModule(moduleHash)
+    const onStartDragModule = useCallback(() => {
+        if (onStartDragModuleProp) {
+            onStartDragModuleProp(moduleHash)
         }
         return {
             moduleHash,
         }
-    }
+    }, [onStartDragModuleProp, moduleHash])
 
-    bounds = {
-        top: 0,
-        left: 0,
-    }
+    const { layout = EMPTY } = module
+    const { position = EMPTY } = layout
+    const defaultPosition = useMemo(() => ({
+        x: parseFloat(position.left) || 0,
+        y: parseFloat(position.top) || 0,
+    }), [position.left, position.top])
 
-    render() {
-        const { module } = this.props
-        const { layout } = module
-        const defaultPosition = {
-            x: (layout && parseInt(layout.position.left, 10)) || 0,
-            y: (layout && parseInt(layout.position.top, 10)) || 0,
-        }
-
-        return (
-            <Draggable
-                defaultClassNameDragging={styles.isDragging}
-                cancel={`.${ModuleStyles.dragCancel}`}
-                handle={`.${ModuleStyles.dragHandle}`}
-                bounds={this.bounds}
-                defaultPosition={defaultPosition}
-                onStop={this.onDropModule}
-                onStart={this.onStartDragModule}
-            >
-                {this.props.children}
-            </Draggable>
-        )
-    }
+    return (
+        <Draggable
+            defaultClassNameDragging={styles.isDragging}
+            cancel={`.${ModuleStyles.dragCancel}`}
+            handle={`.${ModuleStyles.dragHandle}`}
+            defaultPosition={defaultPosition}
+            onStop={onDropModule}
+            onStart={onStartDragModule}
+        >
+            {children}
+        </Draggable>
+    )
 }

@@ -8,7 +8,7 @@
 .CanvasEdit {
   flex: 1;
   flex-direction: column;
-  font-family: 'IBM Plex Sans', sans-serif;
+  font-family: var(--sans);
   display: grid;
   grid-template-areas:
     'canvas sidebar'
@@ -23,12 +23,13 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .CanvasToolbar {
   grid-area: footer;
   width: 100vw;
-  z-index: 11; /* show over connections */
+  z-index: 13; /* show over connections & module search */
   min-height: 80px;
 }
 
@@ -37,4 +38,8 @@
 
 :global(.react-draggable-transparent-selection) {
   user-select: none;
+}
+
+body:global(.editor) {
+  overflow: hidden;
 }

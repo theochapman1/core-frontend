@@ -1,16 +1,16 @@
 // @flow
 
 import React from 'react'
-import { Translate, I18n } from 'react-redux-i18n'
-import MediaQuery from 'react-responsive'
+import styled from 'styled-components'
 
+import Button from '$shared/components/Button'
 import EmptyState from '$shared/components/EmptyState'
 import emptyStateIcon from '$shared/assets/images/empty_state_icon.png'
 import emptyStateIcon2x from '$shared/assets/images/empty_state_icon@2x.png'
 import noResultIcon from '$shared/assets/images/search_no_result.png'
 import noResultemptyStateIcon2x from '$shared/assets/images/search_no_result@2x.png'
 import type { Filter } from '$userpages/flowtype/common-types'
-import breakpoints from '$app/scripts/breakpoints'
+import { LG } from '$shared/utils/styled'
 
 type NoResultsViewProps = {
     onResetFilter: Function,
@@ -20,23 +20,45 @@ type Props = NoResultsViewProps & {
     hasFilter: boolean,
 }
 
+const Message = styled.small`
+    && {
+        display: none;
+
+        @media (min-width: ${LG}px) {
+            display: block;
+        }
+    }
+`
+
+const MobileMessage = styled.small`
+    && {
+        display: block;
+
+        @media (min-width: ${LG}px) {
+            display: none;
+        }
+    }
+`
+
 const NoCreatedCanvasesView = () => (
     <EmptyState
         image={(
             <img
                 src={emptyStateIcon}
                 srcSet={`${emptyStateIcon2x} 2x`}
-                alt={I18n.t('error.notFound')}
+                alt="Not found"
             />
         )}
     >
-        <Translate value="userpages.canvases.noCreatedCanvases.title" />
-        <MediaQuery minWidth={breakpoints.lg.min}>
-            <Translate value="userpages.canvases.noCreatedCanvases.message" tag="small" />
-        </MediaQuery>
-        <MediaQuery maxWidth={breakpoints.lg.min}>
-            <Translate value="userpages.canvases.noCreatedCanvases.messageMobile" tag="small" />
-        </MediaQuery>
+        <p>
+            <span>You haven&apos;t created any canvases yet.</span>
+            <Message>
+                Click the button above to create one.
+            </Message>
+            <MobileMessage>
+                Use the desktop app to make one.
+            </MobileMessage>
+        </p>
     </EmptyState>
 )
 
@@ -46,21 +68,24 @@ const NoResultsView = ({ onResetFilter }: NoResultsViewProps) => (
             <img
                 src={noResultIcon}
                 srcSet={`${noResultemptyStateIcon2x} 2x`}
-                alt={I18n.t('error.notFound')}
+                alt="Not found"
             />
         )}
         link={(
-            <button
-                type="button"
-                className="btn btn-special"
+            <Button
+                kind="special"
                 onClick={onResetFilter}
             >
-                <Translate value="userpages.canvases.noCanvasesResult.clearFilters" />
-            </button>
+                Clear filters
+            </Button>
         )}
     >
-        <Translate value="userpages.canvases.noCanvasesResult.title" />
-        <Translate value="userpages.canvases.noCanvasesResult.message" tag="small" />
+        <p>
+            <span>No results.</span>
+            <small>
+                We couldn&apos;t find any canvases that match your search.
+            </small>
+        </p>
     </EmptyState>
 )
 

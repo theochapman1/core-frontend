@@ -1,174 +1,314 @@
 // @flow
 
-import React, { Component } from 'react'
-import { connect } from 'react-redux'
-import { Container, Row, Col, Button } from 'reactstrap'
-import { Translate, I18n } from 'react-redux-i18n'
-import Helmet from 'react-helmet'
+import React, { Fragment, useState, useMemo, useEffect, useCallback } from 'react'
+import { useSelector, useDispatch } from 'react-redux'
 import { Link } from 'react-router-dom'
+import { push } from 'connected-react-router'
+import styled from 'styled-components'
 
-import links from '$userpages/../links'
-import { getDashboards, updateFilter } from '$userpages/modules/dashboard/actions'
-import { selectDashboards, selectFetching, selectFilter } from '$userpages/modules/dashboard/selectors'
-import type { StoreState } from '$userpages/flowtype/states/store-state'
-import type { DashboardList as DashboardListType } from '$userpages/flowtype/dashboard-types'
-import type { Filter, SortOption } from '$userpages/flowtype/common-types'
+import { CoreHelmet } from '$shared/components/Helmet'
+import type { Dashboard, DashboardId } from '$userpages/flowtype/dashboard-types'
+import { getDashboards, deleteOrRemoveDashboard } from '$userpages/modules/dashboard/actions'
+import { selectDashboards, selectFetching } from '$userpages/modules/dashboard/selectors'
 import Layout from '$userpages/components/Layout'
-import { defaultColumns, getFilters } from '$userpages/utils/constants'
-import Tile from '$shared/components/Tile'
-import Search from '../../Header/Search'
-import Dropdown from '$shared/components/Dropdown'
+import { getFilters } from '$userpages/utils/constants'
+import confirmDialog from '$shared/utils/confirm'
+import Search from '$userpages/components/Header/Search'
+import Popover from '$shared/components/Popover'
 import DocsShortcuts from '$userpages/components/DocsShortcuts'
-import DashboardPreview from '$editor/dashboard/components/Preview'
-import styles from './dashboardList.pcss'
+import ListContainer from '$shared/components/Container/List'
+import Button from '$shared/components/Button'
+import useFilterSort from '$userpages/hooks/useFilterSort'
+import useCopy from '$shared/hooks/useCopy'
+import { DashboardTile } from '$shared/components/Tile'
+import { getResourcePermissions, resetResourcePermission } from '$userpages/modules/permission/actions'
+import { selectFetchingPermissions, selectDashboardPermissions } from '$userpages/modules/permission/selectors'
+import Grid from '$shared/components/Tile/Grid'
+import Sidebar from '$shared/components/Sidebar'
+import SidebarProvider, { useSidebar } from '$shared/components/Sidebar/SidebarProvider'
+import ShareSidebar from '$userpages/components/ShareSidebar'
+import Notification from '$shared/utils/Notification'
+import { NotificationIcon } from '$shared/utils/constants'
+import { MD, LG } from '$shared/utils/styled'
+import resourceUrl from '$shared/utils/resourceUrl'
+import routes from '$routes'
 
 import NoDashboardsView from './NoDashboards'
 
-type StateProps = {
-    dashboards: DashboardListType,
-    fetching: boolean,
-    filter: ?Filter,
-}
+const DesktopOnlyButton = styled(Button)`
+     && {
+         display: none;
+     }
 
-type DispatchProps = {
-    getDashboards: () => void,
-    updateFilter: (filter: Filter) => void,
-}
+     @media (min-width: ${LG}px) {
+         && {
+             display: inline-flex;
+         }
+     }
+`
 
-type Props = StateProps & DispatchProps
+const StyledListContainer = styled(ListContainer)`
+    && {
+        margin-top: 16px;
+    }
+
+    @media (min-width: ${MD}px) {
+        && {
+            margin-top: 34px;
+        }
+    }
+
+    @media (min-width: ${LG}px) {
+        && {
+            margin-top: 0;
+        }
+    }
+`
+
+function DashboardPageSidebar({ dashboard }) {
+    const sidebar = useSidebar()
+    const dispatch = useDispatch()
+
+    const dashboardId = dashboard && dashboard.id
+
+    const onClose = useCallback(() => {
+        sidebar.close()
+
+        if (dashboardId) {
+            dispatch(resetResourcePermission('DASHBOARD', dashboardId))
+        }
+    }, [sidebar, dispatch, dashboardId])
+
+    return (
+        <Sidebar.WithErrorBoundary
+            isOpen={sidebar.isOpen()}
+            onClose={onClose}
+        >
+            {sidebar.isOpen('share') && (
+                <ShareSidebar
+                    resourceTitle={dashboard && dashboard.name}
+                    resourceType="DASHBOARD"
+                    resourceId={dashboard && dashboard.id}
+                    onClose={onClose}
+                />
+            )}
+        </Sidebar.WithErrorBoundary>
+    )
+}
 
 const CreateDashboardButton = () => (
-    <Button
-        color="primary"
-        className={styles.createDashboardButton}
+    <DesktopOnlyButton
         tag={Link}
-        to={links.editor.dashboardEditor}
+        to={routes.dashboards.edit({
+            id: null,
+        })}
     >
-        <Translate value="userpages.dashboards.createDashboard" />
-    </Button>
+        Create dashboard
+    </DesktopOnlyButton>
 )
 
-const getSortOptions = (): Array<SortOption> => {
-    const filters = getFilters()
-    return [
-        filters.NAME_ASC,
-        filters.NAME_DESC,
-    ]
-}
+const DashboardList = () => {
+    const sortOptions = useMemo(() => {
+        const filters = getFilters('dashboard')
+        return [
+            filters.RECENT_DESC,
+            filters.NAME_ASC,
+            filters.NAME_DESC,
+        ]
+    }, [])
+    const {
+        defaultFilter,
+        filter,
+        setSearch,
+        setSort,
+        resetFilter,
+    } = useFilterSort(sortOptions)
 
-class DashboardList extends Component<Props> {
-    defaultFilter = getSortOptions()[0].filter
+    const dashboards = useSelector(selectDashboards)
+    const fetching = useSelector(selectFetching)
+    const { copy } = useCopy()
+    const fetchingPermissions = useSelector(selectFetchingPermissions)
+    const permissions = useSelector(selectDashboardPermissions)
 
-    componentDidMount() {
-        const { filter, updateFilter, getDashboards } = this.props
+    const sidebar = useSidebar()
+    const dispatch = useDispatch()
 
-        // Set default filter if not selected
-        if (!filter) {
-            updateFilter(this.defaultFilter)
+    useEffect(() => {
+        dispatch(getDashboards(filter))
+    }, [dispatch, filter])
+
+    const deleteDashboardAndNotify = useCallback(async (id: DashboardId, hasDeletePermission: boolean) => {
+        try {
+            await dispatch(deleteOrRemoveDashboard(id))
+
+            Notification.push({
+                title: `Dashboard ${hasDeletePermission ? 'deleted' : 'removed'} successfully!`,
+                icon: NotificationIcon.CHECKMARK,
+            })
+        } catch (e) {
+            Notification.push({
+                title: e.message,
+                icon: NotificationIcon.ERROR,
+            })
         }
-        getDashboards()
-    }
+    }, [dispatch])
 
-    onSearchChange = (value: string) => {
-        const { filter, updateFilter, getDashboards } = this.props
-        const newFilter = {
-            ...filter,
-            search: value,
-        }
-        updateFilter(newFilter)
-        getDashboards()
-    }
-
-    onSortChange = (sortOptionId) => {
-        const { filter, updateFilter, getDashboards } = this.props
-        const sortOption = getSortOptions().find((opt) => opt.filter.id === sortOptionId)
-
-        if (sortOption) {
-            const newFilter = {
-                search: filter && filter.search,
-                ...sortOption.filter,
-            }
-            updateFilter(newFilter)
-            getDashboards()
-        }
-    }
-
-    resetFilter = () => {
-        const { updateFilter, getDashboards } = this.props
-        updateFilter({
-            ...this.defaultFilter,
-            search: '',
+    const confirmDeleteOrRemoveDashboard = useCallback(async (id: DashboardId, hasDeletePermission: boolean) => {
+        const confirmed = await confirmDialog('dashboard', {
+            title: `${hasDeletePermission ? 'Delete' : 'Remove'} this dashboard?`,
+            message: 'This is an unrecoverable action. Please confirm this is what you want before you proceed.',
+            acceptButton: {
+                title: `Yes, ${hasDeletePermission ? 'delete' : 'remove'}`,
+                kind: 'destructive',
+            },
+            centerButtons: true,
+            dontShowAgain: false,
         })
-        getDashboards()
-    }
 
-    render() {
-        const { fetching, dashboards, filter } = this.props
+        if (confirmed) {
+            deleteDashboardAndNotify(id, hasDeletePermission)
+        }
+    }, [deleteDashboardAndNotify])
+
+    const [shareDialogDashboard, setShareDialogDashboard] = useState(undefined)
+    const onOpenShareDialog = useCallback((dashboard: Dashboard) => {
+        setShareDialogDashboard(dashboard)
+        sidebar.open('share')
+    }, [sidebar])
+
+    const onCopyUrl = useCallback((id: DashboardId) => {
+        copy(resourceUrl('DASHBOARD', id))
+
+        Notification.push({
+            title: 'Dashboard URL copied',
+            icon: NotificationIcon.CHECKMARK,
+        })
+    }, [copy])
+
+    const onToggleDashboardDropdown = useCallback((id: string) => async (open: boolean) => {
+        if (open && !fetchingPermissions && !permissions[id]) {
+            try {
+                await dispatch(getResourcePermissions('DASHBOARD', id))
+            } catch (e) {
+                // Noop.
+            }
+        }
+    }, [dispatch, fetchingPermissions, permissions])
+
+    const canBeSharedByCurrentUser = useCallback((id: string): boolean => (
+        !fetchingPermissions &&
+        permissions[id] &&
+        permissions[id].includes('dashboard_share')
+    ), [fetchingPermissions, permissions])
+
+    const canBeDeletedByCurrentUser = useCallback((id: string): boolean => (
+        !fetchingPermissions &&
+        permissions[id] &&
+        permissions[id].includes('dashboard_delete')
+    ), [fetchingPermissions, permissions])
+
+    const navigate = useCallback((to) => dispatch(push(to)), [dispatch])
+
+    const getActions = useCallback((dashboard) => {
+        const hasDeletePermission = canBeDeletedByCurrentUser(dashboard.id)
 
         return (
-            <Layout
-                headerAdditionalComponent={<CreateDashboardButton />}
-                headerSearchComponent={
-                    <Search
-                        placeholder={I18n.t('userpages.dashboards.filterDashboards')}
-                        value={(filter && filter.search) || ''}
-                        onChange={this.onSearchChange}
-                    />
-                }
-                headerFilterComponent={
-                    <Dropdown
-                        title={I18n.t('userpages.filter.sortBy')}
-                        onChange={this.onSortChange}
-                        selectedItem={(filter && filter.id) || this.defaultFilter.id}
-                    >
-                        {getSortOptions().map((s) => (
-                            <Dropdown.Item key={s.filter.id} value={s.filter.id}>
-                                {s.displayName}
-                            </Dropdown.Item>
-                        ))}
-                    </Dropdown>
-                }
-                loading={fetching}
-            >
-                <Helmet title={`Streamr Core | ${I18n.t('userpages.title.dashboards')}`} />
-                <Container className={styles.corepageContentContainer} >
-                    {!fetching && dashboards && dashboards.length <= 0 && (
-                        <NoDashboardsView
-                            hasFilter={!!filter && (!!filter.search || !!filter.key)}
-                            filter={filter}
-                            onResetFilter={this.resetFilter}
-                        />
-                    )}
-                    {dashboards && dashboards.length > 0 && (
-                        <Row>
-                            {dashboards.map((dashboard) => (
-                                <Col {...defaultColumns} key={dashboard.id}>
-                                    <Tile
-                                        link={`${links.editor.dashboardEditor}/${dashboard.id}`}
-                                        image={<DashboardPreview className={styles.PreviewImage} dashboard={dashboard} />}
-                                    >
-                                        <Tile.Title>{dashboard.name}</Tile.Title>
-                                    </Tile>
-                                </Col>
-                            ))}
-                        </Row>
-                    )}
-                </Container>
-                <DocsShortcuts />
-            </Layout>
+            <Fragment>
+                <Popover.Item
+                    onClick={() => navigate(routes.dashboards.edit({
+                        id: dashboard.id,
+                    }))}
+                >
+                    Edit
+                </Popover.Item>
+                <Popover.Item
+                    disabled={!canBeSharedByCurrentUser(dashboard.id)}
+                    onClick={() => onOpenShareDialog(dashboard)}
+                >
+                    Share
+                </Popover.Item>
+                <Popover.Item
+                    onClick={() => onCopyUrl(dashboard.id)}
+                >
+                    Copy URL
+                </Popover.Item>
+                <Popover.Item
+                    onClick={() => confirmDeleteOrRemoveDashboard(dashboard.id, hasDeletePermission)}
+                >
+                    {hasDeletePermission ? 'Delete' : 'Remove'}
+                </Popover.Item>
+            </Fragment>
         )
-    }
+    }, [
+        navigate,
+        canBeSharedByCurrentUser,
+        canBeDeletedByCurrentUser,
+        onOpenShareDialog,
+        onCopyUrl,
+        confirmDeleteOrRemoveDashboard,
+    ])
+
+    return (
+        <Layout
+            headerAdditionalComponent={<CreateDashboardButton />}
+            headerSearchComponent={
+                <Search.Active
+                    placeholder="Filter dashboards"
+                    value={(filter && filter.search) || ''}
+                    onChange={setSearch}
+                />
+            }
+            headerFilterComponent={
+                <Popover
+                    title="Sort by"
+                    type="uppercase"
+                    caret="svg"
+                    menuProps={{
+                        right: true,
+                    }}
+                    activeTitle
+                    onChange={setSort}
+                    selectedItem={(filter && filter.id) || (defaultFilter && defaultFilter.id)}
+                >
+                    {sortOptions.map((s) => (
+                        <Popover.Item key={s.filter.id} value={s.filter.id}>
+                            {s.displayName}
+                        </Popover.Item>
+                    ))}
+                </Popover>
+            }
+            loading={fetching}
+        >
+            <CoreHelmet title="Dashboards" />
+            <StyledListContainer>
+                {!fetching && dashboards && dashboards.length <= 0 && (
+                    <NoDashboardsView
+                        hasFilter={!!filter && (!!filter.search || !!filter.key)}
+                        filter={filter}
+                        onResetFilter={resetFilter}
+                    />
+                )}
+                {dashboards && dashboards.length > 0 && (
+                    <Grid>
+                        {dashboards.map((dashboard) => (
+                            <DashboardTile
+                                key={dashboard.id}
+                                dashboard={dashboard}
+                                actions={getActions(dashboard)}
+                                onMenuToggle={onToggleDashboardDropdown(dashboard.id)}
+                            />
+                        ))}
+                    </Grid>
+                )}
+            </StyledListContainer>
+            <DashboardPageSidebar dashboard={shareDialogDashboard} />
+            <DocsShortcuts />
+        </Layout>
+    )
 }
 
-const mapStateToProps = (state: StoreState): StateProps => ({
-    dashboards: selectDashboards(state),
-    fetching: selectFetching(state),
-    filter: selectFilter(state),
-})
-
-const mapDispatchToProps = (dispatch: Function): DispatchProps => ({
-    getDashboards: () => dispatch(getDashboards()),
-    updateFilter: (filter) => dispatch(updateFilter(filter)),
-})
-
-export default connect(mapStateToProps, mapDispatchToProps)(DashboardList)
+export default (props: any) => (
+    <SidebarProvider>
+        <DashboardList {...props} />
+    </SidebarProvider>
+)

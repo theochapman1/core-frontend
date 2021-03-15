@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+set -e
 # Check url responds with expected http response code
 # arguments: name expected_status url
 # e.g. checkHTTP 'data-api' 404 http://localhost:8890/
@@ -12,7 +12,7 @@ checkHTTP() {
         echo "$name up";
         return 0;
     else
-        echo "$name not up";
+        echo "$name not up. Expected: $expected_status. Got: $http_code from $url";
         return 1;
     fi;
 }

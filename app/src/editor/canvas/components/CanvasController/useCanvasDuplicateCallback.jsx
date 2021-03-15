@@ -1,23 +1,32 @@
 import { useContext, useCallback } from 'react'
 
-import useIsMountedRef from '$shared/utils/useIsMountedRef'
-import * as RouterContext from '$editor/shared/components/RouterContext'
-import usePending from '$editor/shared/hooks/usePending'
+import useIsMountedRef from '$shared/hooks/useIsMountedRef'
+import { Context as RouterContext } from '$shared/contexts/Router'
+import usePending from '$shared/hooks/usePending'
 
-import links from '../../../../links'
+import routes from '$routes'
+import { isRunning } from '../../state'
 import * as services from '../../services'
 
+import useCanvasPermissions from './useCanvasPermissions'
+
 export default function useCanvasDuplicateCallback() {
-    const { history } = useContext(RouterContext.Context)
-    const { isPending, wrap } = usePending('DUPLICATE')
+    const { hasWritePermission } = useCanvasPermissions()
+    const { history } = useContext(RouterContext)
+    const { isPending, wrap } = usePending('canvas.DUPLICATE')
     const isMountedRef = useIsMountedRef()
 
     return useCallback(async (canvas) => {
         if (isPending) { return }
         return wrap(async () => {
+            if (hasWritePermission && !isRunning(canvas) && !canvas.adhoc) {
+                canvas = await services.saveNow(canvas) // ensure canvas saved before duplicating
+            }
             const newCanvas = await services.duplicateCanvas(canvas)
             if (!isMountedRef.current) { return }
-            history.push(`${links.editor.canvasEditor}/${newCanvas.id}`)
+            history.push(routes.canvases.edit({
+                id: newCanvas.id,
+            }))
         })
-    }, [wrap, isPending, history, isMountedRef])
+    }, [wrap, isPending, history, isMountedRef, hasWritePermission])
 }

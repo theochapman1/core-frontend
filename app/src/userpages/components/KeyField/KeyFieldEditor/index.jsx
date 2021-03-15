@@ -1,158 +1,145 @@
 // @flow
 
-import React from 'react'
-import { I18n } from 'react-redux-i18n'
-import { Row, Col } from 'reactstrap'
-import cx from 'classnames'
+import React, { useState, useCallback } from 'react'
+import styled from 'styled-components'
 
-import type { ResourcePermission } from '$shared/flowtype/resource-key-types'
-import TextInput from '$shared/components/TextInput'
-import Buttons from '$shared/components/Buttons'
-import Dropdown from '$shared/components/Dropdown'
-import { leftColumn, rightColumn } from '$userpages/components/StreamPage/constants'
+import UnstyledButtons from '$shared/components/Buttons'
+import Label from '$ui/Label'
+import Text from '$ui/Text'
+import Errors from '$ui/Errors'
 
-import styles from './keyFieldEditor.pcss'
+export type LabelType = 'apiKey' | 'address' | 'sharedSecret'
+
+const KeyName = styled.div``
+
+const KeyValue = styled.div``
+
+const Buttons = styled(UnstyledButtons)``
 
 type Props = {
     keyName?: string,
     value?: string,
     createNew?: boolean,
-    editValue?: boolean,
-    onCancel?: () => void,
-    onSave: (keyName: string, value: string, keyPermission: ?ResourcePermission) => void,
+    showValue?: boolean,
+    onCancel: () => void,
+    onSave: (keyName: string) => void | Promise<void>,
     waiting?: boolean,
     error?: ?string,
-    showPermissionType?: boolean,
-    permission?: ?ResourcePermission,
+    labelType: LabelType,
 }
 
-type State = {
-    keyName: string,
-    keyId: string,
-    permission: ?ResourcePermission,
+export const keyValues = {
+    apiKey: 'API key',
+    address: 'Address',
+    sharedSecret: 'Shared secret',
 }
 
-class KeyFieldEditor extends React.Component<Props, State> {
-    state = {
-        keyName: this.props.keyName || '',
-        keyId: this.props.value || '',
-        permission: this.props.permission || 'read',
-    }
-
-    onKeyNameChange = (e: SyntheticInputEvent<EventTarget>) => {
-        this.setState({
-            keyName: e.target.value,
-        })
-    }
-
-    onValueChange = (e: SyntheticInputEvent<EventTarget>) => {
-        this.setState({
-            keyId: e.target.value,
-        })
-    }
-
-    onPermissionChange = (value: string) => {
-        // Value needs to be checked to satisfy Flow
-        const permission: ?ResourcePermission = ['read', 'write', 'share'].find((p) => p === value)
-        if (permission) {
-            this.setState({
-                permission,
-            })
-        }
-    }
-
-    onSave = () => {
-        const { keyName, keyId, permission } = this.state
-        const { onSave } = this.props
-
-        onSave(keyName, keyId, permission)
-    }
-
-    render = () => {
-        const { keyName, keyId, permission } = this.state
-        const {
-            onCancel,
-            createNew,
-            editValue,
-            waiting,
-            error,
-            showPermissionType,
-        } = this.props
-        const filled = !!keyName && (createNew || !!keyId)
-        const leftCol = showPermissionType ? leftColumn : { xs: 12 }
-
-        return (
-            <div className={cx(styles.editor, {
-                [styles.editorWithPermissions]: showPermissionType,
-            })}
-            >
-                <Row>
-                    <Col {...leftCol}>
-                        <div className={styles.keyName}>
-                            <TextInput
-                                label={I18n.t('userpages.keyFieldEditor.keyName')}
-                                value={keyName}
-                                onChange={this.onKeyNameChange}
-                                preserveLabelSpace
-                                error={(createNew && !editValue && error) || undefined}
-                            />
-                        </div>
-                        {(!createNew || editValue) && (
-                            <div className={styles.keyValue}>
-                                <TextInput
-                                    label={I18n.t('userpages.keyFieldEditor.apiKey')}
-                                    value={keyId}
-                                    onChange={this.onValueChange}
-                                    preserveLabelSpace
-                                    readOnly={!editValue}
-                                    error={error || undefined}
-                                />
-                            </div>
-                        )}
-                    </Col>
-                    {showPermissionType && (
-                        <Col {...rightColumn}>
-                            <Dropdown
-                                title=""
-                                onChange={this.onPermissionChange}
-                                selectedItem={permission}
-                                className={styles.permissionDropdown}
-                            >
-                                <Dropdown.Item key="read" value="read">
-                                    Read
-                                </Dropdown.Item>
-                                <Dropdown.Item key="write" value="write">
-                                    Write
-                                </Dropdown.Item>
-                            </Dropdown>
-                        </Col>
-                    )}
-                    <Col>
-                        <Buttons
-                            className={styles.buttons}
-                            actions={{
-                                save: {
-                                    title: I18n.t(`userpages.keyFieldEditor.${createNew ? 'add' : 'save'}`),
-                                    color: 'primary',
-                                    outline: true,
-                                    onClick: this.onSave,
-                                    disabled: !filled || waiting,
-                                    spinner: waiting,
-                                },
-                                cancel: {
-                                    color: 'link',
-                                    className: 'grey-container',
-                                    title: I18n.t('userpages.keyFieldEditor.cancel'),
-                                    outline: true,
-                                    onClick: onCancel,
-                                },
-                            }}
-                        />
-                    </Col>
-                </Row>
-            </div>
-        )
-    }
+export const keyNames = {
+    apiKey: 'Key name',
+    address: 'Account name',
+    sharedSecret: 'Secret name',
 }
+
+const UnstyledKeyFieldEditor = ({
+    onCancel,
+    onSave,
+    createNew,
+    keyName: keyNameProp,
+    value,
+    showValue,
+    waiting,
+    error,
+    labelType,
+    ...props
+}: Props) => {
+    const [keyName, setKeyName] = useState(keyNameProp || '')
+
+    const onKeyNameChange = useCallback((e: SyntheticInputEvent<EventTarget>) => {
+        setKeyName(e.target.value)
+    }, [])
+
+    const filled = !!keyName && (createNew || !!value)
+
+    return (
+        <div {...props}>
+            <KeyName>
+                <Label
+                    htmlFor="keyName"
+                    state={createNew && !showValue && error && 'ERROR'}
+                >
+                    {keyNames[labelType]}
+                </Label>
+                <Text
+                    id="keyName"
+                    value={keyName}
+                    onChange={onKeyNameChange}
+                />
+                {createNew && !showValue && error && (
+                    <Errors overlap>
+                        {error}
+                    </Errors>
+                )}
+            </KeyName>
+            {(!createNew || showValue) && (
+                <KeyValue>
+                    <Label
+                        htmlFor="keyValue"
+                        state={error && 'ERROR'}
+                    >
+                        {keyValues[labelType]}
+                    </Label>
+                    <Text
+                        id="keyValue"
+                        value={value}
+                        readOnly
+                    />
+                    <Errors overlap>
+                        {error}
+                    </Errors>
+                </KeyValue>
+            )}
+            <Buttons
+                actions={{
+                    save: {
+                        title: createNew ? 'Add' : 'Save',
+                        kind: 'secondary',
+                        onClick: () => onSave(keyName),
+                        disabled: !filled || waiting,
+                        spinner: waiting,
+                    },
+                    cancel: {
+                        kind: 'link',
+                        className: 'grey-container',
+                        title: 'Cancel',
+                        outline: true,
+                        onClick: () => onCancel(),
+                    },
+                }}
+            />
+        </div>
+    )
+}
+
+UnstyledKeyFieldEditor.defaultProps = {
+    labelType: 'apiKey',
+}
+
+const KeyFieldEditor = styled(UnstyledKeyFieldEditor)`
+    position: relative;
+    background: #F5F5F5;
+    border-radius: 4px;
+    margin: -1rem -2rem 0 -2rem;
+    padding: 2rem;
+
+    ${Buttons} {
+        justify-content: flex-start;
+        padding: 0;
+        margin-top: 1.875rem;
+    }
+
+    ${KeyValue} {
+        margin-top: 1.7rem;
+    }
+`
 
 export default KeyFieldEditor
