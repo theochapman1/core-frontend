@@ -218,7 +218,7 @@ module.exports = {
             canPrint: true,
         }),
         new ImageminPlugin({
-            disable: !isProduction(), // Disable during development
+            disable: true,
             pngquant: {
                 quality: '50-75',
             },
