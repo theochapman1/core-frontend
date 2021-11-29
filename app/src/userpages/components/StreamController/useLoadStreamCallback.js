@@ -12,14 +12,6 @@ import useEditableState from '$shared/contexts/Undo/useEditableState'
 
 import { useController } from '.'
 
-export function normalizePermissions(permissions) {
-    if (!permissions || !Array.isArray(permissions)) {
-        return []
-    }
-
-    return [...new Set(permissions.map(({ operation }) => operation))]
-}
-
 const mapStreamFields = (stream) => {
     const { config } = stream
 
@@ -73,7 +65,7 @@ export default function useLoadStreamCallback() {
                     console.error('useLoadStreamCallback', e)
                 }
 
-                return []
+                return {}
             })()
 
             if (!isMounted()) { return }
@@ -82,7 +74,7 @@ export default function useLoadStreamCallback() {
 
             setStream({
                 stream,
-                permissions: normalizePermissions(permissions),
+                permissions,
             })
         })
     ), [wrap, client, setStream, productUpdater, isMounted])
