@@ -65,17 +65,17 @@ module.exports = {
                     '@mdx-js/loader',
                 ],
             },
-            {
-                test: /\.jsx?$/,
-                include: [path.resolve(root, 'src'), path.resolve(root, 'scripts')],
-                enforce: 'pre',
-                use: [{
-                    loader: 'eslint-loader',
-                    options: {
-                        cache: !isProduction(),
-                    },
-                }],
-            },
+            // {
+            //     test: /\.jsx?$/,
+            //     include: [path.resolve(root, 'src'), path.resolve(root, 'scripts')],
+            //     enforce: 'pre',
+            //     use: [{
+            //         loader: 'eslint-loader',
+            //         options: {
+            //             cache: !isProduction(),
+            //         },
+            //     }],
+            // },
             {
                 test: /.jsx?$/,
                 loader: 'babel-loader',
