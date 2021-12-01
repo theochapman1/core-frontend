@@ -289,6 +289,7 @@ module.exports = {
             index: publicPath,
             disableDotRule: true,
         },
+        disableHostCheck: true,
         hot: true,
         inline: true,
         progress: true,
