@@ -38,19 +38,6 @@ export class StreamrWeb3 extends Web3 {
     }
 }
 
-export const getWeb3 = (): StreamrWeb3 => {
-    if (typeof ethereum !== 'undefined') {
-        return new StreamrWeb3(ethereum)
-    } else if (typeof web3 !== 'undefined') {
-        return new StreamrWeb3(web3.currentProvider, {
-            isLegacy: true,
-        })
-    }
-    return new StreamrWeb3(new FakeProvider(), {
-        isLegacy: true,
-    })
-}
-
 type ValidateParams = {
     web3: Web3,
     requireNetwork?: $Values<typeof networks> | boolean,
@@ -106,5 +93,3 @@ export const validateWeb3 = async ({ web3: _web3, requireNetwork = networks.MAIN
 
     return _web3
 }
-
-export default getWeb3
