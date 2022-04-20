@@ -24,7 +24,7 @@ import Notification from '$shared/utils/Notification'
 import { isAddressWhitelisted } from '$mp/modules/contractProduct/services'
 import useAccountAddress from '$shared/hooks/useAccountAddress'
 import type { ProductId } from '$mp/flowtype/product-types'
-import { validateWeb3 } from '$shared/web3/web3Provider'
+import validateWeb3, { DefaultFiniteTimeout } from '$utils/web3/validateWeb3'
 import getWeb3 from '$utils/web3/getWeb3'
 import getDefaultWeb3Account from '$utils/web3/getDefaultWeb3Account'
 import routes from '$routes'
@@ -40,10 +40,10 @@ const getWhitelistStatus = async ({ productId, validate = false }: WhitelistStat
     try {
         if (validate) {
             await validateWeb3({
-                web3,
-                requireNetwork: false, // network check is done later if purchase is possible
-                unlockTimeout: true,
+                timeoutAfter: DefaultFiniteTimeout,
             })
+
+            // Skip the network check. We do it later, if purchase is possible.
         }
 
         const account = await getDefaultWeb3Account(web3)

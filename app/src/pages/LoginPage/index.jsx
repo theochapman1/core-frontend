@@ -10,6 +10,9 @@ import useInterrupt from '$shared/hooks/useInterrupt'
 import { getUserData } from '$shared/modules/user/actions'
 import { useSession } from '$shared/components/SessionProvider'
 import InterruptionError from '$shared/errors/InterruptionError'
+import getWeb3 from '$utils/web3/getWeb3'
+import validateWeb3 from '$utils/web3/validateWeb3'
+import getSessionToken from '$auth/utils/getSessionToken'
 import routes from '$routes'
 import reducer, { Connect, Fail, initialState } from './reducer'
 import Metamask from './adapters/Metamask'
@@ -53,10 +56,21 @@ function UnstyledUnwrappedLoginPage({ className }) {
 
             try {
                 try {
-                    token = await Promise.race([
-                        newMethod.connect(),
-                        cancelPromise,
-                    ])
+                    token =
+                        await Promise.race([
+                            (async () => {
+                                const web3 = getWeb3()
+
+                                await newMethod.setProvider(web3)
+
+                                await validateWeb3()
+
+                                return getSessionToken({
+                                    ethereum: web3.currentProvider,
+                                })
+                            })(),
+                            cancelPromise,
+                        ])
                 } finally {
                     requireUninterrupted()
                 }

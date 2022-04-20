@@ -1,4 +1,4 @@
-import { validateWeb3 } from '$shared/web3/web3Provider'
+import validateWeb3 from '$utils/web3/validateWeb3'
 import getWeb3 from '$utils/web3/getWeb3'
 import getConfig from '$shared/web3/config'
 import UnsupportedNetworkError from '$shared/errors/UnsupportedNetworkError'
@@ -10,10 +10,7 @@ export async function switchNetwork(nextChainId) {
 
     const { metamask: networks } = getConfig()
 
-    await validateWeb3({
-        web3,
-        requireNetwork: false,
-    })
+    await validateWeb3()
 
     if (!networks[nextChainId]) {
         throw new UnsupportedNetworkError(nextChainId)

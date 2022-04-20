@@ -19,6 +19,7 @@ export default async (auth) => {
             auth,
         })).session.getSessionToken()
     } catch (e) {
+        console.warn(e)
         throw parseError(e)
     }
 }

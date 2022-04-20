@@ -2,8 +2,7 @@ import { useMemo, useCallback, useState, useEffect } from 'react'
 import { useSelector } from 'react-redux'
 
 import useModal from '$shared/hooks/useModal'
-import { validateWeb3 } from '$shared/web3/web3Provider'
-import getWeb3 from '$utils/web3/getWeb3'
+import validateWeb3 from '$utils/web3/validateWeb3'
 import WrongNetworkSelectedError from '$shared/errors/WrongNetworkSelectedError'
 import usePending from '$shared/hooks/usePending'
 import useIsMounted from '$shared/hooks/useIsMounted'
@@ -20,8 +19,7 @@ const useRequireNetwork = (requiredNetwork, check = true, monitorNetworkChange =
         wrap(async () => {
             try {
                 await validateWeb3({
-                    web3: getWeb3(),
-                    requireNetwork: requiredNetwork,
+                    network: requiredNetwork,
                 })
 
                 if (!isMounted()) {

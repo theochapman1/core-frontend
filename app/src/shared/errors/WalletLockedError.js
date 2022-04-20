@@ -2,7 +2,7 @@ export default class WalletLockedError extends Error {
     name = 'WalletLockedError'
 
     constructor() {
-        super('Please unlock your wallet')
+        super('Please unlock your wallet or enable access to your account')
 
         if (Error.captureStackTrace) {
             Error.captureStackTrace(this, WalletLockedError)
