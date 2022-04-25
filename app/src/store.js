@@ -1,5 +1,3 @@
-// @flow
-
 import thunk from 'redux-thunk'
 import { createStore, applyMiddleware, compose, combineReducers } from 'redux'
 
@@ -16,6 +14,7 @@ import globalReducer from './marketplace/modules/global/reducer'
 import relatedProductsReducer from './marketplace/modules/relatedProducts/reducer'
 import transactionsReducer from './marketplace/modules/transactions/reducer'
 import userpagesReducers from './userpages/reducers'
+import web3reducer from './reducers/web3'
 
 import analytics from './analytics'
 
@@ -43,6 +42,7 @@ export function initStore() {
             user: userReducer,
             relatedProducts: relatedProductsReducer,
             transactions: transactionsReducer,
+            web3: web3reducer,
             ...userpagesReducers,
         }),
         compose(...toBeComposed),
