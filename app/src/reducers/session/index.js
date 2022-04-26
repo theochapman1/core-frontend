@@ -5,8 +5,9 @@ import validateWeb3 from '$utils/web3/validateWeb3'
 import InterruptionError from '$shared/errors/InterruptionError'
 import { post } from '$shared/utils/api'
 import { logout } from '$shared/modules/user/actions'
-import { setToken } from '$shared/utils/sessionToken'
+import { getToken, getMethod, setToken, setMethod } from '$shared/utils/sessionToken'
 import routes from '$routes'
+import methods from './methods'
 
 const Init = 'session / init session'
 
@@ -14,12 +15,21 @@ const Start = 'session / start session'
 
 const Stop = 'session / stop session'
 
-const initialState = {
+const cleanState = {
     busy: false,
     error: undefined,
     method: undefined,
     token: undefined,
     web3: undefined,
+}
+
+const recentMethod = methods.find(({ id }) => id === getMethod())
+
+const initialState = {
+    ...cleanState,
+    method: recentMethod,
+    token: getToken() || void 0,
+    web3: recentMethod ? recentMethod.getWeb3() : void 0,
 }
 
 function defaultAborted() {
@@ -66,6 +76,8 @@ export function startSession(method, { cancelPromise = defaultCancelPromise, abo
 
             setToken(token)
 
+            setMethod(method.id)
+
             dispatch({
                 type: Start,
                 payload: {
@@ -108,27 +120,27 @@ export default function sessionReducer(state = initialState, action) {
     switch (action.type) {
         case Init:
             return {
-                ...initialState,
+                ...cleanState,
                 busy: true,
                 method: action.payload,
             }
         case Start:
             if (action.error) {
                 return {
-                    ...initialState,
+                    ...cleanState,
                     error: action.payload,
                     method: state.method,
                 }
             }
 
             return {
-                ...initialState,
+                ...cleanState,
                 ...action.payload,
                 method: state.method,
             }
         case Stop:
             return {
-                ...initialState,
+                ...cleanState,
             }
         default:
             return state

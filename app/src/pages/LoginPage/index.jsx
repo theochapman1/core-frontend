@@ -9,11 +9,8 @@ import { userIsNotAuthenticated } from '$auth/utils/userAuthenticated'
 import useInterrupt from '$shared/hooks/useInterrupt'
 import { startSession, selectSessionError, selectSessionBusy, selectSessionMethod, selectSessionToken } from '$app/src/reducers/session'
 import { getUserData } from '$shared/modules/user/actions'
-import Metamask from '$app/src/reducers/session/methods/Metamask'
-import WalletConnect from '$app/src/reducers/session/methods/WalletConnect'
+import methods from '$app/src/reducers/session/methods'
 import routes from '$routes'
-
-const methods = [Metamask, WalletConnect]
 
 function UnstyledUnwrappedLoginPage({ className }) {
     const error = useSelector(selectSessionError)
