@@ -14,7 +14,7 @@ import globalReducer from './marketplace/modules/global/reducer'
 import relatedProductsReducer from './marketplace/modules/relatedProducts/reducer'
 import transactionsReducer from './marketplace/modules/transactions/reducer'
 import userpagesReducers from './userpages/reducers'
-import web3reducer from './reducers/web3'
+import sessionReducer from './reducers/session'
 
 import analytics from './analytics'
 
@@ -42,7 +42,7 @@ export function initStore() {
             user: userReducer,
             relatedProducts: relatedProductsReducer,
             transactions: transactionsReducer,
-            web3: web3reducer,
+            session: sessionReducer,
             ...userpagesReducers,
         }),
         compose(...toBeComposed),

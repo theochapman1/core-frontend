@@ -1,5 +1,5 @@
-import React, { Fragment, useReducer, useRef } from 'react'
-import { useDispatch } from 'react-redux'
+import React, { Fragment, useRef, useEffect } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import styled, { createGlobalStyle } from 'styled-components'
 import { Logo, Auth, SignInMethod, LoadingIndicator } from '@streamr/streamr-layout'
 import { Link as PrestyledLink } from 'react-router-dom'
@@ -7,29 +7,35 @@ import Button from '$shared/components/Button'
 import { TABLET, MEDIUM } from '$shared/utils/styled'
 import { userIsNotAuthenticated } from '$auth/utils/userAuthenticated'
 import useInterrupt from '$shared/hooks/useInterrupt'
+import { startSession, selectSessionError, selectSessionBusy, selectSessionMethod, selectSessionToken } from '$app/src/reducers/session'
 import { getUserData } from '$shared/modules/user/actions'
-import { useSession } from '$shared/components/SessionProvider'
-import InterruptionError from '$shared/errors/InterruptionError'
-import getWeb3 from '$utils/web3/getWeb3'
-import validateWeb3 from '$utils/web3/validateWeb3'
-import getSessionToken from '$auth/utils/getSessionToken'
+import Metamask from '$app/src/reducers/session/methods/Metamask'
+import WalletConnect from '$app/src/reducers/session/methods/WalletConnect'
 import routes from '$routes'
-import reducer, { Connect, Fail, initialState } from './reducer'
-import Metamask from './adapters/Metamask'
-import WalletConnect from './adapters/WalletConnect'
 
 const methods = [Metamask, WalletConnect]
 
 function UnstyledUnwrappedLoginPage({ className }) {
-    const [{ method, connecting, error }, trigger] = useReducer(reducer, initialState)
+    const error = useSelector(selectSessionError)
+
+    const connecting = useSelector(selectSessionBusy)
+
+    const method = useSelector(selectSessionMethod)
+
+    const token = useSelector(selectSessionToken)
 
     const dispatch = useDispatch()
+
+    useEffect(() => {
+        if (token) {
+            // This will take the user away from the login page on success.
+            dispatch(getUserData())
+        }
+    }, [dispatch, token])
 
     const itp = useInterrupt()
 
     const cancelPromiseRef = useRef()
-
-    const { setSessionToken } = useSession()
 
     function cancel() {
         const { current: { reject } = {} } = cancelPromiseRef
@@ -40,9 +46,12 @@ function UnstyledUnwrappedLoginPage({ className }) {
     }
 
     async function connect(newMethod) {
-        const { requireUninterrupted } = itp('connect')
+        if (connecting) {
+            // Calling it before `itp()` causes no interruption.
+            return
+        }
 
-        trigger([Connect, newMethod])
+        const { interrupted } = itp('connect')
 
         const cancelPromise = new Promise((resolve, reject) => {
             cancelPromiseRef.current = {
@@ -51,74 +60,14 @@ function UnstyledUnwrappedLoginPage({ className }) {
             }
         })
 
-        try {
-            let token
+        await dispatch(startSession(newMethod, {
+            cancelPromise,
+            aborted() {
+                return interrupted()
+            },
+        }))
 
-            try {
-                try {
-                    token =
-                        await Promise.race([
-                            (async () => {
-                                const web3 = getWeb3()
-
-                                await newMethod.setProvider(web3)
-
-                                await validateWeb3()
-
-                                return getSessionToken({
-                                    ethereum: web3.currentProvider,
-                                })
-                            })(),
-                            cancelPromise,
-                        ])
-                } finally {
-                    requireUninterrupted()
-                }
-            } catch (e) {
-                if (e instanceof InterruptionError) {
-                    return
-                }
-
-                throw e
-            }
-
-            cancelPromiseRef.current = undefined
-
-            if (!token) {
-                throw new Error('No token')
-            }
-
-            setSessionToken({
-                token,
-                method: newMethod.id,
-            })
-
-            let user
-
-            try {
-                try {
-                    // This will redirect the user from the login page if succesful.
-                    // @FIXME: That magic is confusing. — Mariusz.
-                    user = await dispatch(getUserData())
-                } finally {
-                    requireUninterrupted()
-                }
-            } catch (e) {
-                if (e instanceof InterruptionError) {
-                    return
-                }
-
-                throw e
-            }
-
-            if (!user) {
-                throw new Error('No user data')
-            }
-        } catch (e) {
-            console.warn(e)
-
-            trigger([Fail, e])
-        }
+        cancelPromiseRef.current = undefined
     }
 
     function label(m) {

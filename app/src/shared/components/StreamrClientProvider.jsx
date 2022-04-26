@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react'
 import Provider from 'streamr-client-react'
+import { useSelector } from 'react-redux'
 import getClientConfig from '$app/src/getters/getClientConfig'
-import { useSession } from '$shared/components/SessionProvider'
 import getWeb3 from '$utils/web3/getWeb3'
+import { selectSessionToken } from '$app/src/reducers/session'
 
 export default function StreamrClientProvider({ children }) {
-    const { token } = useSession()
+    const token = useSelector(selectSessionToken)
 
     const config = useMemo(() => {
         const nextConfig = getClientConfig()

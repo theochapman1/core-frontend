@@ -1,4 +1,5 @@
 import React from 'react'
+import Web3 from 'web3'
 import EthereumProvider from '@walletconnect/ethereum-provider'
 import { SignInMethod } from '@streamr/streamr-layout'
 
@@ -6,7 +7,7 @@ const WalletConnect = {
     id: 'walletConnect',
     label: 'WalletConnect',
     icon: <SignInMethod.Icon.WalletConnect />,
-    async setProvider(web3) {
+    getWeb3() {
         const provider = new EthereumProvider({
             chainId: 137,
             rpc: {
@@ -19,7 +20,7 @@ const WalletConnect = {
         // WalletConnect fix. lol
         provider.signer.request = provider.signer.request.bind(provider.signer)
 
-        web3.setProvider(provider)
+        return new Web3(provider)
     },
 }
 

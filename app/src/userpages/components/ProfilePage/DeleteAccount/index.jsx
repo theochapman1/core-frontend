@@ -9,11 +9,10 @@ import Button from '$shared/components/Button'
 import useModal from '$shared/hooks/useModal'
 import usePending from '$shared/hooks/usePending'
 import useIsMounted from '$shared/hooks/useIsMounted'
-import { logout } from '$shared/modules/user/actions'
 import Notification from '$shared/utils/Notification'
 import { NotificationIcon } from '$shared/utils/constants'
 import { MD, LG } from '$shared/utils/styled'
-import { useSession } from '$shared/components/SessionProvider'
+import { stopSession } from '$app/src/reducers/session'
 import routes from '$routes'
 import Description from '../Description'
 import DeleteAccountDialog from './DeleteAccountDialog'
@@ -35,7 +34,6 @@ const DeleteAccount = () => {
     const dispatch = useDispatch()
     const history = useHistory()
     const isMounted = useIsMounted()
-    const { resetSessionToken } = useSession()
 
     const deleteAccount = useCallback(async () => (
         wrap(async () => {
@@ -54,15 +52,14 @@ const DeleteAccount = () => {
                     })
                     setTimeout(() => {
                         if (isMounted()) {
-                            dispatch(logout())
-                            resetSessionToken()
+                            dispatch(stopSession())
                             history.push(routes.root())
                         }
                     }, 500)
                 }
             }
         })
-    ), [wrap, deleteAccountDialog, isMounted, dispatch, history, resetSessionToken])
+    ), [wrap, deleteAccountDialog, isMounted, dispatch, history])
 
     return (
         <div>

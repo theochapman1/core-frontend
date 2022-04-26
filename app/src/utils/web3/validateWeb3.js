@@ -1,4 +1,3 @@
-import getWeb3 from '$utils/web3/getWeb3'
 import Web3NotSupportedError from '$shared/errors/Web3NotSupportedError'
 import { networks } from '$shared/utils/constants'
 import { checkEthereumNetworkIsCorrect } from '$shared/utils/web3'
@@ -7,9 +6,7 @@ import unlock from '$utils/web3/unlock'
 
 export const DefaultFiniteTimeout = 100
 
-export default async function validateWeb3({ timeoutAfter, network } = {}) {
-    const web3 = getWeb3()
-
+export default async function validateWeb3(web3, { timeoutAfter, network } = {}) {
     if (!web3.currentProvider) {
         throw new Web3NotSupportedError()
     }
