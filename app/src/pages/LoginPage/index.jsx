@@ -26,6 +26,7 @@ function UnstyledUnwrappedLoginPage({ className }) {
     useEffect(() => {
         if (token) {
             // This will take the user away from the login page on success.
+            // @TODO: We have to make such things go. Very confusing.
             dispatch(getUserData())
         }
     }, [dispatch, token])
@@ -44,7 +45,7 @@ function UnstyledUnwrappedLoginPage({ className }) {
 
     async function connect(newMethod) {
         if (connecting) {
-            // Calling it before `itp()` causes no interruption.
+            // Returning before `itp()` call prevents interruption.
             return
         }
 
