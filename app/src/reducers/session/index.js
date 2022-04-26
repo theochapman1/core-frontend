@@ -155,6 +155,12 @@ export const selectSessionError = createSelector(selectSession, ({ error }) => e
 
 export const selectSessionMethod = createSelector(selectSession, ({ method }) => method)
 
-export const selectSessionToken = createSelector(selectSession, ({ token }) => token)
+export const selectSessionToken = createSelector(selectSession, ({ token }) => token || undefined)
 
 export const selectSessionWeb3 = createSelector(selectSession, ({ web3 }) => web3)
+
+export const selectSessionEthereumProvider = createSelector(selectSessionWeb3, (web3) => (
+    web3
+        ? web3.currentProvider
+        : undefined
+))

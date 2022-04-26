@@ -2,11 +2,12 @@ import React, { useMemo } from 'react'
 import Provider from 'streamr-client-react'
 import { useSelector } from 'react-redux'
 import getClientConfig from '$app/src/getters/getClientConfig'
-import getWeb3 from '$utils/web3/getWeb3'
-import { selectSessionToken } from '$app/src/reducers/session'
+import { selectSessionToken, selectSessionEthereumProvider } from '$app/src/reducers/session'
 
 export default function StreamrClientProvider({ children }) {
     const token = useSelector(selectSessionToken)
+
+    const ethereumProvider = useSelector(selectSessionEthereumProvider)
 
     const config = useMemo(() => {
         const nextConfig = getClientConfig()
@@ -15,14 +16,12 @@ export default function StreamrClientProvider({ children }) {
             nextConfig.auth = {
                 ...nextConfig.auth,
                 sessionToken: token || undefined,
-                ethereum: getWeb3().currentProvider,
+                ethereum: ethereumProvider,
             }
         }
 
         return nextConfig
-    }, [token])
+    }, [token, ethereumProvider])
 
-    return config.auth.ethereum
-        ? <Provider {...config}>{children}</Provider>
-        : children
+    return <Provider {...config}>{children}</Provider>
 }
