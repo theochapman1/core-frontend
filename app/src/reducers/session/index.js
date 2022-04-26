@@ -5,6 +5,7 @@ import validateWeb3 from '$utils/web3/validateWeb3'
 import InterruptionError from '$shared/errors/InterruptionError'
 import { post } from '$shared/utils/api'
 import { logout } from '$shared/modules/user/actions'
+import { getUserData } from '$shared/modules/user/services'
 import { getToken, getMethod, setToken, setMethod } from '$shared/utils/sessionToken'
 import routes from '$routes'
 import methods from './methods'
@@ -32,6 +33,37 @@ const initialState = {
     web3: recentMethod ? recentMethod.getWeb3() : void 0,
 }
 
+export function stopSession() {
+    return async (dispatch) => {
+        try {
+            await post({
+                url: routes.auth.external.logout(),
+            })
+        } catch (e) {
+            // No-op.
+        }
+
+        dispatch(logout())
+
+        dispatch({
+            type: Stop,
+        })
+    }
+}
+
+function initSession(method) {
+    return (dispatch) => {
+        setToken(undefined)
+
+        setMethod(undefined)
+
+        dispatch({
+            type: Init,
+            payload: method,
+        })
+    }
+}
+
 function defaultAborted() {
     return false
 }
@@ -41,16 +73,13 @@ const defaultCancelPromise = new Promise(() => {})
 
 export function startSession(method, { cancelPromise = defaultCancelPromise, aborted = defaultAborted } = {}) {
     return async (dispatch) => {
-        dispatch({
-            type: Init,
-            payload: method,
-        })
+        dispatch(initSession(method))
 
         const web3 = new Web3(method.getWeb3())
 
-        let token
-
         try {
+            let token
+
             try {
                 token =
                     await Promise.race([
@@ -70,13 +99,28 @@ export function startSession(method, { cancelPromise = defaultCancelPromise, abo
                 }
             }
 
+            setToken(token)
+
+            setMethod(method.id)
+
             if (!token) {
                 throw new Error('No token')
             }
 
-            setToken(token)
+            let user
 
-            setMethod(method.id)
+            try {
+                user = await getUserData()
+            } finally {
+                if (aborted()) {
+                    // eslint-disable-next-line no-unsafe-finally
+                    throw new InterruptionError()
+                }
+            }
+
+            if (!user) {
+                throw new Error('No user')
+            }
 
             dispatch({
                 type: Start,
@@ -87,9 +131,8 @@ export function startSession(method, { cancelPromise = defaultCancelPromise, abo
             })
         } catch (e) {
             if (e instanceof InterruptionError) {
-                dispatch({
-                    type: Stop,
-                })
+                // Login page has been changed during the sign in process. Clean up (sign out).
+                await dispatch(stopSession())
                 return
             }
 
@@ -99,20 +142,6 @@ export function startSession(method, { cancelPromise = defaultCancelPromise, abo
                 error: true,
             })
         }
-    }
-}
-
-export function stopSession() {
-    return async (dispatch) => {
-        await post({
-            url: routes.auth.external.logout(),
-        })
-
-        dispatch(logout)
-
-        dispatch({
-            type: Stop,
-        })
     }
 }
 
