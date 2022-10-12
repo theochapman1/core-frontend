@@ -20,7 +20,7 @@ export default function useUndoBreadcrumbs(enabled) {
             category: 'action',
             message: `${type}${wasUndo ? ' (Undo)' : ''}`,
             data: action,
-            level: Sentry.Severity.Info,
+            level: 'info',
         })
     }, [action, pointer, isEnabled])
 }

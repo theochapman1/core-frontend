@@ -1,6 +1,6 @@
 import qs from 'query-string'
 import { matchPath } from 'react-router-dom'
-import uuid from 'uuid'
+import { v4 as uuid } from 'uuid'
 
 // This is needed to get around missing regeneratorRuntime
 require('@babel/polyfill')

@@ -1,7 +1,7 @@
 // @flow
 
 import EventEmitter from 'events'
-import uuid from 'uuid'
+import { v4 as uuid } from 'uuid'
 import type { Hash } from '$shared/flowtype/web3-types'
 
 const emitter = new EventEmitter()

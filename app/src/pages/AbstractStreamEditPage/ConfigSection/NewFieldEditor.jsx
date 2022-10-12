@@ -1,5 +1,5 @@
 import React, { useReducer, useState, useEffect, useRef } from 'react'
-import uuid from 'uuid'
+import { v4 as uuid } from 'uuid'
 import styled from 'styled-components'
 import Button from '$shared/components/Button'
 import Select from '$ui/Select'

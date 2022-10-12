@@ -8,9 +8,12 @@ const postcssImport = require('postcss-import')({
     ],
 })
 const calc = require('postcss-calc')
-const precss = require('precss')
+const precss = require('precss-v8')
 const postcssColorFunction = require('postcss-color-function')
 const cssMqpacker = require('css-mqpacker')
+const autoprefixer = require('autoprefixer')
+const tailwindcss = require('tailwindcss')
+const tailwindNesting = require('tailwindcss/nesting')
 const ums = require('./scripts/postcss/ums')
 const {
     xs,
@@ -24,6 +27,8 @@ module.exports = {
     plugins: [
         ums,
         postcssImport,
+        // tailwindNesting(),
+        // tailwindcss(),
         precss({
             features: {
                 // causes some issue in chrome.

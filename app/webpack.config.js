@@ -12,7 +12,8 @@ const { UnusedFilesWebpackPlugin } = require('unused-files-webpack-plugin')
 const cssProcessor = require('clean-css')
 const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
-const GitRevisionPlugin = require('git-revision-webpack-plugin')
+const ESLintPlugin = require('eslint-webpack-plugin');
+const { GitRevisionPlugin } = require('git-revision-webpack-plugin')
 const SentryPlugin = require('@sentry/webpack-plugin')
 const validateEnv = require('./scripts/validateEnv')
 const pkg = require('./package')
@@ -49,9 +50,9 @@ module.exports = {
     ],
     output: {
         path: dist,
-        filename: 'bundle_[hash:8].js',
+        filename: '[name]_[fullhash:8].js',
         chunkFilename: '[name].bundle_[contenthash:8].js',
-        sourceMapFilename: '[name]_[hash:8].map',
+        sourceMapFilename: '[name]_[fullhash:8].map',
         publicPath,
     },
     module: {
@@ -70,17 +71,6 @@ module.exports = {
                     },
                     '@mdx-js/loader',
                 ],
-            },
-            {
-                test: /\.jsx?$/,
-                include: [path.resolve(root, 'src'), path.resolve(root, 'scripts')],
-                enforce: 'pre',
-                use: [{
-                    loader: 'eslint-loader',
-                    options: {
-                        cache: !isProduction(),
-                    },
-                }],
             },
             {
                 test: /.jsx?$/,
@@ -104,7 +94,7 @@ module.exports = {
                 test: /\.(png|jpg|jpeg|svg)$/,
                 loader: 'file-loader',
                 options: {
-                    name: 'images/[name]_[hash:8].[ext]',
+                    name: 'images/[name]_[fullhash:8].[ext]',
                     publicPath,
                 },
             },
@@ -113,7 +103,7 @@ module.exports = {
                 test: /\.(mp4)$/,
                 loader: 'file-loader',
                 options: {
-                    name: 'videos/[name]_[hash:8].[ext]',
+                    name: 'videos/[name]_[fullhash:8].[ext]',
                     publicPath,
                 },
             },
@@ -122,7 +112,7 @@ module.exports = {
                 test: /\.(woff|woff2|eot|ttf)$/,
                 loader: 'file-loader',
                 options: {
-                    name: 'fonts/[name]_[hash:8].[ext]',
+                    name: 'fonts/[name]_[fullhash:8].[ext]',
                     publicPath,
                 },
             },
@@ -134,10 +124,11 @@ module.exports = {
                     {
                         loader: 'css-loader',
                         options: {
-                            modules: true,
+                            modules: {
+                                localIdentRegExp: /app\/src\/([^/]+)/i,
+                                localIdentName: isProduction() ? '[local]_[fullhash:base64:8]' : '[1]_[name]_[local]',
+                            },
                             importLoaders: 1,
-                            localIdentRegExp: /app\/src\/([^/]+)/i,
-                            localIdentName: isProduction() ? '[local]_[hash:base64:8]' : '[1]_[name]_[local]',
                         },
                     },
                     'postcss-loader',
@@ -152,9 +143,11 @@ module.exports = {
                     {
                         loader: 'sass-loader',
                         options: {
-                            includePaths: [
-                                path.resolve(__dirname, 'src/shared/assets/stylesheets'),
-                            ],
+                            sassOptions: {
+                                includePaths: [
+                                    path.resolve(__dirname, 'src/shared/assets/stylesheets'),
+                                ],
+                            },
                         },
                     },
                 ],
@@ -175,6 +168,7 @@ module.exports = {
     },
     plugins: [
         // Common plugins between prod and dev
+        new ESLintPlugin(),
         new HtmlWebpackPlugin({
             template: 'src/index.html',
             templateParameters: {
@@ -216,7 +210,7 @@ module.exports = {
             }),
         ] : []),
         // Ignore all locale files of moment.js
-        new webpack.IgnorePlugin(/^\.\/locale$/, /moment$/),
+        new webpack.IgnorePlugin({ resourceRegExp: /^\.\/locale$/, contextRegExp: /moment$/ }),
     ].concat(isProduction() ? [
         new CleanWebpackPlugin([dist]),
         // Production plugins
@@ -241,42 +235,7 @@ module.exports = {
         }),
     ] : [
         // Dev plugins
-        new UnusedFilesWebpackPlugin({
-            patterns: [
-                'src/marketplace/**/*.*',
-                'src/shared/**/*.*',
-                'src/routes/**/*.*',
-                'src/userpages/**/*.*',
-                'src/docs/**/*.*',
-                'src/*.*',
-            ].filter(Boolean),
-            globOptions: {
-                ignore: [
-                    'node_modules/**/*.*',
-                    // skip tests
-                    '**/tests/*.*',
-                    '**/tests/**/*.*',
-                    '**/test/*.*',
-                    '**/test/**/*.*',
-                    '**/*.test.js',
-                    '**/*.test.jsx',
-                    // skip flowtype
-                    '**/flowtype/**/*.*',
-                    '**/flowtype/*.*',
-                    '**/types.js',
-                    // skip conditional stubs
-                    '**/stub.jsx',
-                    // skip stories
-                    '**/*.stories.*',
-                    // skip MD documentation
-                    'src/docs/docsEditingGuide.md',
-                    // skip sketch files
-                    '**/*.sketch',
-                    'src/docs/scripts/*.*',
-                ],
-            },
-        }),
-        new FlowBabelWebpackPlugin(),
+        // new FlowBabelWebpackPlugin(),
         new WebpackNotifierPlugin(),
     ]).concat(process.env.SENTRY_DSN ? [
         new SentryPlugin({
@@ -306,10 +265,13 @@ module.exports = {
             disableDotRule: true,
         },
         hot: true,
-        inline: true,
-        progress: true,
         port: process.env.PORT || 3333,
-        publicPath,
+        static: {
+            publicPath,
+        },
+        client: {
+            progress: true,
+        },
     },
     // automatically creates a vendor chunk & also
     // seems to prevent out of memory errors during dev ??
