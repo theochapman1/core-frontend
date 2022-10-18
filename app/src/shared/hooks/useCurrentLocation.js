@@ -9,6 +9,10 @@ export default () => {
             return 'marketplace'
         }
 
-        return pathname.split(/\//).filter(Boolean)[0] || 'core'
+        if (pathname) {
+            return pathname.split(/\//).filter(Boolean)[0] || 'core'
+        }
+
+        return ''
     }, [pathname])
 }

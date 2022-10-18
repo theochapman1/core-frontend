@@ -5,7 +5,7 @@ module.exports = {
         'streamr',
         'plugin:cypress/recommended',
     ],
-    // parser: '@babel/eslint-parser',
+    parser: '@babel/eslint-parser',
     settings: {
         'import/resolver': {
             webpack: {

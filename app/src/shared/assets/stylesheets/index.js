@@ -1,4 +1,4 @@
-import '$shared/assets/stylesheets/bootstrap.scss'
+// import '$shared/assets/stylesheets/bootstrap.scss'
 import '@streamr/streamr-icons/styles.css'
 import './tailwind.css'
 import './variables.css'

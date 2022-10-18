@@ -1,20 +1,19 @@
 // @flow
 
 import React from 'react'
-import { render } from 'react-dom'
+import { createRoot } from 'react-dom/client'
 import { Provider } from 'react-redux'
 
 import App from './app'
 import store from './store'
 
-const root = document.getElementById('root')
+const root = createRoot(document.getElementById("root"))
 
 if (root) {
-    render(
+    root.render(
         <Provider store={store}>
             <App />
-        </Provider>,
-        root,
+        </Provider>
     )
 } else {
     throw new Error('Root element could not be found.')

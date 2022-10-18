@@ -27,8 +27,8 @@ module.exports = {
     plugins: [
         ums,
         postcssImport,
-        // tailwindNesting(),
-        // tailwindcss(),
+        tailwindNesting(),
+        tailwindcss(),
         precss({
             features: {
                 // causes some issue in chrome.
@@ -55,5 +55,6 @@ module.exports = {
         calc, // Has to go after precss.
         postcssColorFunction,
         cssMqpacker,
+        // autoprefixer,
     ],
 }
