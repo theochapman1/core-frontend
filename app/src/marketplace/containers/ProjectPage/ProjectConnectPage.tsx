@@ -23,7 +23,6 @@ const ProjectConnect: FunctionComponent = () => {
         <DetailsPageHeader
             backButtonLink={routes.marketplace.index}
             pageTitle={pageTitle}
-            currentPageUrl={ routes.marketplace.product.connect({id: productId})}
             linkTabs={linkTabs}
         />
         <LoadingIndicator loading={isPending} />
